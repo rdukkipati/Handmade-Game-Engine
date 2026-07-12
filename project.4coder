@@ -11,6 +11,7 @@ patterns = {
 "*.sh",
 "*.4coder",
 "*.txt",
+"*.metal",
 };
 blacklist_patterns = {
 ".*",
