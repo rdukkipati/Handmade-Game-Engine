@@ -1,3 +1,7 @@
+#include <metal_stdlib>
+
+using namespace metal;
+
 struct vertex_in
 {
 	float2 Position [[attribute(0)]];
