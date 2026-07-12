@@ -194,7 +194,7 @@ main(i32 argc, const char *argv[])
         if(!ApplicationDelegate)
         {
             NSLog(@"ApplicationDelegate allocation failed");
-            exit(1);
+            return 1;
         }
         [application setDelegate:ApplicationDelegate];
 
@@ -218,7 +218,7 @@ main(i32 argc, const char *argv[])
         if(!Window)
         {
             NSLog(@"Window allocation failed");
-            exit(1);
+            return 1;
         }
 
         [Window setBackgroundColor:[NSColor windowBackgroundColor]];
@@ -250,7 +250,7 @@ main(i32 argc, const char *argv[])
         if(!MetalLayer)
         {
             NSLog(@"MetalLayer allocation failed");
-            exit(1);
+            return 1;
         }
         [MetalLayer setDevice:Device];
         [MetalLayer setPixelFormat:MTLPixelFormatBGRA8Unorm];
@@ -268,7 +268,7 @@ main(i32 argc, const char *argv[])
         if(!CommandQueue)
         {
             NSLog(@"CommandQueue allocation failed");
-            exit(1);
+            return 1;
         }
         
         MTLTextureDescriptor *TextureDescriptor = [MTLTextureDescriptor                  texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:1 height:1 mipmapped:NO];
@@ -286,14 +286,29 @@ main(i32 argc, const char *argv[])
                                       newBufferWithBytes:VerticesAndUVs
                                       length:sizeof(VerticesAndUVs)
                                       options:0];
+        if(!VertexBuffer)
+        {
+            NSLog(@"VertexBuffer failed");
+            return 1;
+        }
         
         MTLRenderPipelineDescriptor *RenderPipelineDescriptor = [[MTLRenderPipelineDescriptor alloc] init];
+        if(!RenderPipelineDescriptor)
+        {
+            NSLog(@"RenderPipelineDescriptor failed");
+            return 1;
+        }
         
         RenderPipelineDescriptor.vertexFunction = VertexFunction;
         RenderPipelineDescriptor.fragmentFunction = FragmentFunction;
         RenderPipelineDescriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
         
         MTLVertexDescriptor *VertexDescriptor = [[MTLVertexDescriptor alloc] init];
+        if(!VertexDescriptor)
+        {
+            NSLog(@"VertexDescriptor failed");
+            return 1;
+        }
         
         VertexDescriptor.attributes[0].format = MTLVertexFormatFloat2;
         VertexDescriptor.attributes[0].bufferIndex = 0;
@@ -316,6 +331,11 @@ main(i32 argc, const char *argv[])
         }
         
         MTLSamplerDescriptor *SamplerDescriptor = [[MTLSamplerDescriptor alloc] init];
+        if(!SamplerDescriptor)
+        {
+            NSLog(@"SamplerDescriptor failed");
+            return 1;
+        }
         id<MTLSamplerState> Sampler = [device newSamplerStateWithDescriptor:SamplerDescriptor];
         
         NSEvent *Event;
@@ -346,6 +366,11 @@ main(i32 argc, const char *argv[])
                 MTLRenderPassDescriptor *RenderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
                 
                 id<CAMetalDrawable> Drawable = [MetalLayer nextDrawable];
+                if(!Drawable)
+                {
+                    NSLog(@"Drawables ran out");
+                    return 1;
+                }
                 RenderPassDescriptor.colorAttachments[0].texture = [Drawable texture];
                 RenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionDontCare;
                 RenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
@@ -353,12 +378,15 @@ main(i32 argc, const char *argv[])
                 id<MTLRenderCommandEncoder> RenderCommandEncoder = [CommandBuffer renderCommandEncoderWithDescriptor:RenderPassDescriptor];
                 
                 [RenderCommandEncoder setRenderPipelinestate:RenderPipelineState];
+                
                 [RenderCommandEncoder setVertexBuffer:VertexBuffer offset:0 atIndex:0];
                 [RenderCommandEncoder setFragmentTexture:Texture atIndex:0];
                 [RenderCommandEncoder setFragmentSamplerState:Sampler atIndex:0];
 
+                [RenderCommandEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
                 
-                
+                [RenderCommandEncoder endEncoding];
+                [CommandBuffer commit];
                 
                 ++XOffset;
                 YOffset += 2;
