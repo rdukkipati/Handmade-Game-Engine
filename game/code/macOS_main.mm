@@ -1,5 +1,6 @@
 #include <Cocoa/Cocoa.h>
 #include <Metal/Metal.h>
+#include <QuartzCore/CAMetalLayer.h>
 
 #include <limits.h>
 #include <mach-o/dyld.h>
@@ -30,7 +31,7 @@ global_variable b32 GLOBAL_RUNNING = true;
 global_variable void *BitmapMemory = NULL;
 global_variable id<MTLTexture> Texture = nil;
 global_variable MTLTextureDescriptor *TextureDescriptor;
-global_variable id<MTLDevice> Device;
+global_variable id<MTLDevice> Device = nil;
 global_variable NSUInteger BytesPerPixel = 4;
 global_variable NSUInteger TextureWidth;
 global_variable NSUInteger TextureHeight;
@@ -95,7 +96,7 @@ NSObject<NSApplicationDelegate, NSWindowDelegate>
 - (void)windowDidResize:(NSNotification *)notification
 {
     NSWindow *Window = [Notification object];
-    [self ResizeMetalLayerForWindow:Window];
+    [self ResizeBitmapAndTexturesForWindow:Window];
 }
 
 - (void)windowWillClose:(NSNotification *)Notification
@@ -165,7 +166,9 @@ RenderWeirdGradient(i32 BlueOffset, i32 GreenOffset)
             u8 Blue = X + BlueOffset;
             u8 Green = Y + GreenOffset;
             
-            *Pixel++ = ((u32)Blue << 0) | ((u32)Green << 8);
+            *Pixel++ = ((u32)Blue << 0) |
+                       ((u32)Green << 8) |
+                       ((u32)255 << 24);
         }
         Row += Pitch;
     }
@@ -235,7 +238,13 @@ main(i32 argc, const char *argv[])
         NSString *NSString_MetalLibraryFullPath = [NSString stringWithUTF8String:MetalLibraryFullPath];
         NSURL *NSURL_MetalLibraryFullPath = [NSURL fileURLWithPath:NSString_MetalLibraryFullPath];
         
-        id<MTLDevice> Device = MTLCreateSystemDefaultDevice();
+        Device = MTLCreateSystemDefaultDevice();
+        if(!Device)
+        {
+            NSLog(@"No Metal device available");
+            return 1;
+        }
+        
         NSError *Errors = nil;
         id<MTLLibrary> MetalLibrary = [Device newLibraryWithURL:NSURL_MetalLibraryFullPath error:&Errors];
         if(!MetalLibrary)
@@ -244,7 +253,7 @@ main(i32 argc, const char *argv[])
             return 1;
         }
         id<MTLFunction> VertexFunction = [MetalLibrary newFunctionWithName:@"VertexFunction"];
-        id<MTLFunction FragmentFunction = [MetalLibrary newFunctionWithName:@"FragmentFunction"];
+        id<MTLFunction> FragmentFunction = [MetalLibrary newFunctionWithName:@"FragmentFunction"];
         
         CAMetalLayer *MetalLayer = [[CAMetalLayer alloc] init];
         if(!MetalLayer)
@@ -271,7 +280,7 @@ main(i32 argc, const char *argv[])
             return 1;
         }
         
-        MTLTextureDescriptor *TextureDescriptor = [MTLTextureDescriptor                  texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:1 height:1 mipmapped:NO];
+        TextureDescriptor = [MTLTextureDescriptor                  texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:1 height:1 mipmapped:NO];
 
         [ApplicationDelegate ResizeBitmapAndTexturesForWindow:Window];
         
@@ -336,7 +345,7 @@ main(i32 argc, const char *argv[])
             NSLog(@"SamplerDescriptor failed");
             return 1;
         }
-        id<MTLSamplerState> Sampler = [device newSamplerStateWithDescriptor:SamplerDescriptor];
+        id<MTLSamplerState> Sampler = [Device newSamplerStateWithDescriptor:SamplerDescriptor];
         
         NSEvent *Event;
         i32 XOffset = 0;
@@ -377,7 +386,7 @@ main(i32 argc, const char *argv[])
                 
                 id<MTLRenderCommandEncoder> RenderCommandEncoder = [CommandBuffer renderCommandEncoderWithDescriptor:RenderPassDescriptor];
                 
-                [RenderCommandEncoder setRenderPipelinestate:RenderPipelineState];
+                [RenderCommandEncoder setRenderPipelineState:RenderPipelineState];
                 
                 [RenderCommandEncoder setVertexBuffer:VertexBuffer offset:0 atIndex:0];
                 [RenderCommandEncoder setFragmentTexture:Texture atIndex:0];
@@ -386,7 +395,9 @@ main(i32 argc, const char *argv[])
                 [RenderCommandEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:6];
                 
                 [RenderCommandEncoder endEncoding];
+                [CommandBuffer presentDrawable:Drawable];
                 [CommandBuffer commit];
+                [CommandBuffer waitUntilCompleted];
                 
                 ++XOffset;
                 YOffset += 2;
