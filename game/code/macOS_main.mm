@@ -5,13 +5,16 @@
 #include <limits.h>
 #include <mach-o/dyld.h>
 
+#include <mach/mach.h>
+
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 #define internal        static
 #define local_persist   static
 #define global_variable static
+
+// vm_allocate
+// Getting screen size
 
 typedef int8_t        i8;
 typedef int16_t       i16;
@@ -307,7 +310,13 @@ main()
             exit(1);
         }
         
-        BitmapMemory = vm_allocate(
+        kern_return_t Result = mach_vm_allocate(mach_task_self(), &BitmapMemory, 3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
+        if(Result != KERN_SUCCESS)
+        {
+            NSLog(@"mach_vm_allocate for BitmapMemory failed: %s", mach_error_string(Result));
+            exit(1);
+        }
+                    
 
         [ApplicationDelegate ResizeBitmapAndTexturesForWindow:Window];
 
@@ -441,6 +450,6 @@ main()
             }
         }
 
-        printf("Handmade Game finished running\n");
+        NSLog(@"Handmade Game finished running\n");
     }
 }
