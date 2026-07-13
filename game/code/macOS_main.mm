@@ -35,6 +35,7 @@ global_variable id<MTLDevice> Device        = nil;
 global_variable NSUInteger    BytesPerPixel = 4;
 global_variable NSUInteger    TextureWidth;
 global_variable NSUInteger    TextureHeight;
+global_variable NSUInteger BitmapPitch;
 
 // clang-format off
 @interface HandmadeApplicationDelegate :
@@ -75,6 +76,10 @@ NSObject<NSApplicationDelegate, NSWindowDelegate>
 
     TextureWidth  = (NSUInteger)BackingBounds.size.width;
     TextureHeight = (NSUInteger)BackingBounds.size.height;
+    BitmapPitch = TextureWidth * BytesPerPixel;
+    
+    // Maybe allocate texture only once and bitmap only once
+    // Then only use however much of it you need
 
     [Texture release];
     [TextureDescriptor setWidth:TextureWidth];
@@ -160,7 +165,6 @@ internal void
 RenderWeirdGradient(i32 BlueOffset, i32 GreenOffset)
 {
 
-    i32 Pitch = TextureWidth * BytesPerPixel;
     u8 *Row   = (u8 *)BitmapMemory;
     for(i32 Y = 0; Y < (i32)TextureHeight; ++Y)
     {
@@ -172,7 +176,7 @@ RenderWeirdGradient(i32 BlueOffset, i32 GreenOffset)
 
             *Pixel++ = ((u32)Blue << 0) | ((u32)Green << 8) | ((u32)255 << 24);
         }
-        Row += Pitch;
+        Row += BitmapPitch;
     }
 }
 
@@ -292,16 +296,25 @@ main()
 
         TextureDescriptor = [MTLTextureDescriptor
             texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                         width:1
-                                        height:1
+                                         width:3456
+                                        height:2234
                                      mipmapped:NO];
+        
+        Texture = [Device newTextureWithDescriptor:TextureDescriptor];
+        if(!Texture)
+        {
+            NSLog(@"Texture allocation failed");
+            exit(1);
+        }
+        
+        BitmapMemory = vm_allocate(
 
         [ApplicationDelegate ResizeBitmapAndTexturesForWindow:Window];
 
         float VerticesAndUVs[] = {
-            -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 1.0f,  0.0f, 0.0f,
-            1.0f,  -1.0f, 1.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 1.0f,
-            -1.0f, 1.0f,  0.0f, 0.0f, 1.0f,  1.0f,  1.0f, 0.0f,
+            -1.0f, -1.0f, -1.0f, 1.0f,
+            1.0f,  -1.0f, 1.0f,  -1.0f,
+            -1.0f, 1.0f,  1.0f,  1.0f,
         };
 
         // Note: Buffers expensive to create
@@ -339,10 +352,7 @@ main()
         VertexDescriptor.attributes[0].format      = MTLVertexFormatFloat2;
         VertexDescriptor.attributes[0].bufferIndex = 0;
         VertexDescriptor.attributes[0].offset      = 0;
-        VertexDescriptor.attributes[1].format      = MTLVertexFormatFloat2;
-        VertexDescriptor.attributes[1].bufferIndex = 0;
-        VertexDescriptor.attributes[1].offset      = 2 * sizeof(float);
-        VertexDescriptor.layouts[0].stride         = 4 * sizeof(float);
+        VertexDescriptor.layouts[0].stride         = 2 * sizeof(float);
         VertexDescriptor.layouts[0].stepFunction =
             MTLVertexStepFunctionPerVertex;
 
@@ -358,16 +368,6 @@ main()
                   [Errors localizedDescription]);
             return 1;
         }
-
-        MTLSamplerDescriptor *SamplerDescriptor = [[MTLSamplerDescriptor alloc]
-            init];
-        if(!SamplerDescriptor)
-        {
-            NSLog(@"SamplerDescriptor failed");
-            return 1;
-        }
-        id<MTLSamplerState> Sampler = [Device
-            newSamplerStateWithDescriptor:SamplerDescriptor];
 
         NSEvent            *Event;
         i32                 XOffset = 0;
@@ -394,7 +394,7 @@ main()
                                                        TextureHeight)
                            mipmapLevel:0
                              withBytes:BitmapMemory
-                           bytesPerRow:BytesPerPixel * TextureWidth];
+                           bytesPerRow:BitmapPitch];
 
                 id<MTLCommandBuffer> CommandBuffer =
                     [CommandQueue commandBuffer];
@@ -426,8 +426,6 @@ main()
                                                offset:0
                                               atIndex:0];
                 [RenderCommandEncoder setFragmentTexture:Texture atIndex:0];
-                [RenderCommandEncoder setFragmentSamplerState:Sampler
-                                                      atIndex:0];
 
                 [RenderCommandEncoder drawPrimitives:MTLPrimitiveTypeTriangle
                                          vertexStart:0
