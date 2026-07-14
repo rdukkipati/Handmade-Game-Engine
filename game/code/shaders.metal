@@ -34,7 +34,7 @@ FragmentFunction(vertex_out Fragment [[stage_in]],
 	fragment_out Result;
 
     uint2 PixelPosition = (uint2)Fragment.Position.xy;
-	Result.Color = Texture.sample(PixelPosition);
+	Result.Color = Texture.read(PixelPosition);
 
 	return Result;
 }

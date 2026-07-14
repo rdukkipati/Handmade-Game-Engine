@@ -6,6 +6,7 @@
 #include <mach-o/dyld.h>
 
 #include <mach/mach.h>
+#include <mach/mach_error.h>
 
 #include <stdint.h>
 
@@ -15,6 +16,9 @@
 
 // vm_allocate
 // Getting screen size
+
+// Reducing c runtime
+//
 
 typedef int8_t        i8;
 typedef int16_t       i16;
@@ -83,24 +87,6 @@ NSObject<NSApplicationDelegate, NSWindowDelegate>
     
     // Maybe allocate texture only once and bitmap only once
     // Then only use however much of it you need
-
-    [Texture release];
-    [TextureDescriptor setWidth:TextureWidth];
-    [TextureDescriptor setHeight:TextureHeight];
-    Texture = [Device newTextureWithDescriptor:TextureDescriptor];
-    if(!Texture)
-    {
-        NSLog(@"Texture allocation failed");
-        exit(1);
-    }
-
-    BitmapMemory = realloc(BitmapMemory,
-                           TextureWidth * TextureHeight * BytesPerPixel);
-    if(!BitmapMemory)
-    {
-        NSLog(@"BitmapMemory allocation failed");
-        exit(1);
-    }
 }
 
 - (void)windowDidResize:(NSNotification *)Notification
@@ -307,14 +293,14 @@ main()
         if(!Texture)
         {
             NSLog(@"Texture allocation failed");
-            exit(1);
+            return 1;
         }
         
-        kern_return_t Result = mach_vm_allocate(mach_task_self(), &BitmapMemory, 3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
+        kern_return_t Result = vm_allocate(mach_task_self(), (vm_address_t *)&BitmapMemory, 3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
         if(Result != KERN_SUCCESS)
         {
-            NSLog(@"mach_vm_allocate for BitmapMemory failed: %s", mach_error_string(Result));
-            exit(1);
+            NSLog(@"vm_allocate for BitmapMemory failed: %s", mach_error_string(Result));
+            return 1;
         }
                     
 
