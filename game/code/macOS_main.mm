@@ -100,6 +100,16 @@ NSObject<NSApplicationDelegate, NSWindowDelegate>
     GLOBAL_RUNNING = false;
 }
 
+- (void)controllerDidConnect:(NSNotification *)Notification
+{
+    // Do something when a controller connects
+}
+
+- (void)controllerDidDisconnect:(NSNotification *)Notification
+{
+    // Do something when a controller disconnects
+}
+
 @end
 
 struct exe_state
@@ -439,3 +449,7 @@ main()
         NSLog(@"Handmade Game finished running\n");
     }
 }
+
+[[NSNotificationCenter defaultCenter] addObserver:ApplicationDelegate selector:@selector(controllerDidConnect:) name:GCControllerDidConnectNotification object:nil];
+
+[[NSNotificationCenter defaultCenter] addObserver:ApplicationDelegate selector:@selector(controllerDidDisconnect:) name:GCControllerDidDisconnectNotification object:nil];

@@ -1,0 +1,90 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXFileReference section */
+		A0DC6A9C3006087900390534 /* build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
+		A0DC6A9D3006087900390534 /* macOS_main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = macOS_main.mm; sourceTree = "<group>"; };
+		A0DC6A9E3006087900390534 /* run.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = run.sh; sourceTree = "<group>"; };
+		A0DC6A9F3006087900390534 /* shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = shaders.metal; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		A0DC6A95300606A700390534 = {
+			isa = PBXGroup;
+			children = (
+				A0DC6AA03006087900390534 /* code */,
+			);
+			sourceTree = "<group>";
+		};
+		A0DC6AA03006087900390534 /* code */ = {
+			isa = PBXGroup;
+			children = (
+				A0DC6A9C3006087900390534 /* build.sh */,
+				A0DC6A9D3006087900390534 /* macOS_main.mm */,
+				A0DC6A9E3006087900390534 /* run.sh */,
+				A0DC6A9F3006087900390534 /* shaders.metal */,
+			);
+			name = code;
+			path = "/Users/raghav/C++/HandmadeGame/game/code";
+			sourceTree = "<absolute>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXProject section */
+		A0DC6A96300606A700390534 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1620;
+			};
+			buildConfigurationList = A0DC6A99300606A700390534 /* Build configuration list for PBXProject "HandmadeGame" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A0DC6A95300606A700390534;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+			);
+		};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+		A0DC6A9A300606A700390534 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		A0DC6A9B300606A700390534 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A0DC6A99300606A700390534 /* Build configuration list for PBXProject "HandmadeGame" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0DC6A9A300606A700390534 /* Debug */,
+				A0DC6A9B300606A700390534 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A0DC6A96300606A700390534 /* Project object */;
+}
