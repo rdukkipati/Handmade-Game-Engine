@@ -408,6 +408,7 @@ main()
                                 return 1;
                                 
                             }
+                            
                             /*NSEventModifierFlags ModifierFlags = [Event modifierFlags];
                             i32 CommandKeyFlag = (ModifierFlags & NSCommandKeyMask);
                             i32 ControlKeyFlag = (ModifierFlags & NSControlKeyMask);
@@ -448,6 +449,29 @@ main()
                     }
                     
                 } while(Event != nil);
+                
+                NSArray<GCController *> *Controllers = [GCController controllers];
+                for(NSUInteger ControllerIndex = 0; ControllerIndex < [Controllers count]; ++ControllerIndex)
+                {
+                    GCController *Controller = [Controllers objectAtIndex:0];
+                    GCExtendedGamepad *Gamepad = [Controller extendedGamepad];
+                    if(Gamepad)
+                    {
+                        BOOL A_Button = [[Gamepad buttonA] isPressed];
+                        BOOL B_Button = [[Gamepad buttonB] isPressed];
+                        BOOL X_Button = [[Gamepad buttonX] isPressed];
+                        BOOL Y_Button = [[Gamepad buttonY] isPressed];
+                        
+                        f32 LeftStick_X = [[[Gamepad leftThumbstick] xAxis] value];
+                        f32 LeftStick_Y = [[[Gamepad leftThumbstick] yAxis] value];
+                        f32 RightStick_X = [[[Gamepad rightThumbstick] xAxis] value];
+                        f32 RightStick_Y = [[[Gamepad rightThumbstick] yAxis] value];
+                        
+                        XOffset += (i32)(LeftStick_X * 8.0f);
+                        YOffset += (i32)(LeftStick_Y * 8.0f);
+                        
+                    }
+                }
                 
                 RenderWeirdGradient(XOffset, YOffset);
                 
