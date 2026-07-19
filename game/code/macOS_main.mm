@@ -1,6 +1,7 @@
 #include <Cocoa/Cocoa.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
+#include <GameController/GameController.h>
 
 #include <limits.h>
 #include <mach-o/dyld.h>
@@ -46,9 +47,9 @@ global_variable id<MTLDevice> Device        = nil;
 global_variable NSUInteger    BytesPerPixel = 4;
 global_variable NSUInteger    TextureWidth;
 global_variable NSUInteger    TextureHeight;
-global_variable NSUInteger BitmapPitch;
+global_variable NSUInteger    BitmapPitch;
 
-global_variable u8 OldKeyboardState[128] = {};
+global_variable u8            OldKeyboardState[128] = {};
 
 // clang-format off
 @interface HandmadeApplicationDelegate :
@@ -89,7 +90,7 @@ NSObject<NSApplicationDelegate, NSWindowDelegate>
     
     TextureWidth  = (NSUInteger)BackingBounds.size.width;
     TextureHeight = (NSUInteger)BackingBounds.size.height;
-    BitmapPitch = TextureWidth * BytesPerPixel;
+    BitmapPitch   = TextureWidth * BytesPerPixel;
     
     // Maybe allocate texture only once and bitmap only once
     // Then only use however much of it you need
@@ -170,7 +171,7 @@ internal void
 RenderWeirdGradient(i32 BlueOffset, i32 GreenOffset)
 {
     
-    u8 *Row   = (u8 *)BitmapMemory;
+    u8 *Row = (u8 *)BitmapMemory;
     for(i32 Y = 0; Y < (i32)TextureHeight; ++Y)
     {
         u32 *Pixel = (u32 *)Row;
@@ -305,27 +306,28 @@ main()
                              height:2234
                              mipmapped:NO];
         
-        Texture = [Device newTextureWithDescriptor:TextureDescriptor];
+        Texture           = [Device newTextureWithDescriptor:TextureDescriptor];
         if(!Texture)
         {
             NSLog(@"Texture allocation failed");
             return 1;
         }
         
-        kern_return_t Result = vm_allocate(mach_task_self(), (vm_address_t *)&BitmapMemory, 3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
+        kern_return_t Result = vm_allocate(
+                                           mach_task_self(), (vm_address_t *)&BitmapMemory,
+                                           3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
         if(Result != KERN_SUCCESS)
         {
-            NSLog(@"vm_allocate for BitmapMemory failed: %s", mach_error_string(Result));
+            NSLog(@"vm_allocate for BitmapMemory failed: %s",
+                  mach_error_string(Result));
             return 1;
         }
-        
         
         [ApplicationDelegate ResizeBitmapAndTexturesForWindow:Window];
         
         float VerticesAndUVs[] = {
-            -1.0f, -1.0f, -1.0f, 1.0f,
-            1.0f,  -1.0f, 1.0f,  -1.0f,
-            -1.0f, 1.0f,  1.0f,  1.0f,
+            -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f,
+            1.0f,  -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
         };
         
         // Note: Buffers expensive to create
@@ -380,9 +382,9 @@ main()
             return 1;
         }
         
-        NSEvent            *Event;
-        i32                 XOffset = 0;
-        i32                 YOffset = 0;
+        NSEvent *Event;
+        i32      XOffset = 0;
+        i32      YOffset = 0;
         while(GLOBAL_RUNNING)
         {
             @autoreleasepool
@@ -404,18 +406,20 @@ main()
                             u16 KeyCode = [Event keyCode];
                             if(KeyCode >= sizeof(OldKeyboardState))
                             {
-                                NSLog(@"KeyCode too large: %hu (0x%02hX)", KeyCode, KeyCode);
+                                NSLog(@"KeyCode too large: %hu (0x%02hX)",
+                                      KeyCode, KeyCode);
                                 return 1;
-                                
                             }
                             
-                            /*NSEventModifierFlags ModifierFlags = [Event modifierFlags];
-                            i32 CommandKeyFlag = (ModifierFlags & NSCommandKeyMask);
-                            i32 ControlKeyFlag = (ModifierFlags & NSControlKeyMask);
-                            i32 AlternateKeyFlag = (ModifierFlags & NSAlternateKeyMask);
-                            i32 ShiftKeyFlag = (ModifierFlags & NSShiftKeyMask);*/
+                            /*NSEventModifierFlags ModifierFlags = [Event
+                            modifierFlags]; i32 CommandKeyFlag = (ModifierFlags
+                            & NSCommandKeyMask); i32 ControlKeyFlag =
+                            (ModifierFlags & NSControlKeyMask); i32
+                            AlternateKeyFlag = (ModifierFlags &
+                            NSAlternateKeyMask); i32 ShiftKeyFlag =
+                            (ModifierFlags & NSShiftKeyMask);*/
                             
-                            b32 IsDown = ((EventType == NSKeyDown) ? 1 : 0);
+                            b32 IsDown  = ((EventType == NSKeyDown) ? 1 : 0);
                             b32 WasDown = OldKeyboardState[KeyCode];
                             
                             if(IsDown != WasDown)
@@ -434,15 +438,14 @@ main()
                                             NSLog(@"WasDown");
                                         }
                                         NSLog(@"\n");
-                                        
-                                    } break;
+                                    }
+                                    break;
                                 }
-                                
                             }
                             
                             OldKeyboardState[KeyCode] = IsDown;
-                            
-                        } break;
+                        }
+                        break;
                         
                         default:
                         [NSApp sendEvent:Event];
@@ -450,26 +453,31 @@ main()
                     
                 } while(Event != nil);
                 
-                NSArray<GCController *> *Controllers = [GCController controllers];
-                for(NSUInteger ControllerIndex = 0; ControllerIndex < [Controllers count]; ++ControllerIndex)
+                NSArray<GCController *> *Controllers =
+                    [GCController controllers];
+                for(NSUInteger ControllerIndex = 0;
+                    ControllerIndex < [Controllers count]; ++ControllerIndex)
                 {
-                    GCController *Controller = [Controllers objectAtIndex:0];
+                    GCController *Controller   = [Controllers objectAtIndex:0];
                     GCExtendedGamepad *Gamepad = [Controller extendedGamepad];
                     if(Gamepad)
                     {
-                        BOOL A_Button = [[Gamepad buttonA] isPressed];
-                        BOOL B_Button = [[Gamepad buttonB] isPressed];
-                        BOOL X_Button = [[Gamepad buttonX] isPressed];
-                        BOOL Y_Button = [[Gamepad buttonY] isPressed];
+                        /*BOOL A_Button      = [[Gamepad buttonA] isPressed];
+                        BOOL B_Button      = [[Gamepad buttonB] isPressed];
+                        BOOL X_Button      = [[Gamepad buttonX] isPressed];
+                        BOOL Y_Button      = [[Gamepad buttonY] isPressed];*/
                         
-                        f32 LeftStick_X = [[[Gamepad leftThumbstick] xAxis] value];
-                        f32 LeftStick_Y = [[[Gamepad leftThumbstick] yAxis] value];
-                        f32 RightStick_X = [[[Gamepad rightThumbstick] xAxis] value];
-                        f32 RightStick_Y = [[[Gamepad rightThumbstick] yAxis] value];
+                        f32  LeftStick_X   = [[[Gamepad leftThumbstick] xAxis]
+                                              value];
+                        f32  LeftStick_Y   = [[[Gamepad leftThumbstick] yAxis]
+                                              value];
+                        /*f32  RightStick_X  = [[[Gamepad rightThumbstick] xAxis]
+                            value];
+                        f32  RightStick_Y  = [[[Gamepad rightThumbstick] yAxis]
+                            value];*/
                         
-                        XOffset += (i32)(LeftStick_X * 8.0f);
-                        YOffset += (i32)(LeftStick_Y * 8.0f);
-                        
+                        XOffset           += (i32)(LeftStick_X * 8.0f);
+                        YOffset           += (i32)(LeftStick_Y * 8.0f);
                     }
                 }
                 
@@ -530,11 +538,12 @@ main()
     }
 }
 /*
-[[NSNotificationCenter defaultCenter] addObserver:ApplicationDelegate selector:@selector(controllerDidConnect:) name:GCControllerDidConnectNotification object:nil];
+[[NSNotificationCenter defaultCenter] addObserver:ApplicationDelegate
+selector:@selector(controllerDidConnect:)
+name:GCControllerDidConnectNotification object:nil];
 
-[[NSNotificationCenter defaultCenter] addObserver:ApplicationDelegate selector:@selector(controllerDidDisconnect:) name:GCControllerDidDisconnectNotification object:nil];
+[[NSNotificationCenter defaultCenter] addObserver:ApplicationDelegate
+selector:@selector(controllerDidDisconnect:)
+name:GCControllerDidDisconnectNotification object:nil];
 
 */
-
-
-
