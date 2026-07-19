@@ -455,10 +455,9 @@ main()
                 
                 NSArray<GCController *> *Controllers =
                     [GCController controllers];
-                for(NSUInteger ControllerIndex = 0;
-                    ControllerIndex < [Controllers count]; ++ControllerIndex)
+                
+                for(GCController *Controller in Controllers)
                 {
-                    GCController *Controller   = [Controllers objectAtIndex:0];
                     GCExtendedGamepad *Gamepad = [Controller extendedGamepad];
                     if(Gamepad)
                     {
