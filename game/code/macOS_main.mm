@@ -11,8 +11,6 @@
 
 #include <stdint.h>
 
-#include <string.h>
-
 #include "macOS_keyboard.h"
 
 #define internal        static
@@ -105,16 +103,6 @@ NSObject<NSApplicationDelegate, NSWindowDelegate>
 - (void)windowWillClose:(NSNotification *)Notification
 {
     GLOBAL_RUNNING = false;
-}
-
-- (void)controllerDidConnect:(NSNotification *)Notification
-{
-    // Do something when a controller connects
-}
-
-- (void)controllerDidDisconnect:(NSNotification *)Notification
-{
-    // Do something when a controller disconnects
 }
 
 @end
@@ -536,13 +524,4 @@ main()
         NSLog(@"Handmade Game finished running\n");
     }
 }
-/*
-[[NSNotificationCenter defaultCenter] addObserver:ApplicationDelegate
-selector:@selector(controllerDidConnect:)
-name:GCControllerDidConnectNotification object:nil];
 
-[[NSNotificationCenter defaultCenter] addObserver:ApplicationDelegate
-selector:@selector(controllerDidDisconnect:)
-name:GCControllerDidDisconnectNotification object:nil];
-
-*/
