@@ -21,6 +21,7 @@ The platform-specific code is written in Objective-C++ and uses Cocoa, Metal, an
 - Preallocated framebuffer storage to avoid repeated allocation during resizing
 - Command-line build pipeline for C++, Objective-C++, and Metal shaders
 
+
 ## Architecture
 
 The platform layer separates operating-system-specific functionality from the game code:
