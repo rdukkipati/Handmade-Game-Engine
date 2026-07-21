@@ -2,6 +2,7 @@
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
 #include <GameController/GameController.h>
+#include <CoreAudio/AudioHardware.h>
 
 #include <limits.h>
 #include <mach-o/dyld.h>
