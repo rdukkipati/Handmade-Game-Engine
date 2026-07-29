@@ -526,3 +526,66 @@ main()
     }
 }
 
+struct sound_output
+{
+    
+}
+
+sound_output SoundOutput = {};
+
+
+AudioComponentDescription acd = {};
+acd.componentType = kAudioUnitType_Output;
+acd.componentSubType = kAudioUnitSubType_DefaultOutput;
+acd.componentManufacturer = kAudioUnitManufacturer_Apple;
+
+AudioComponent ac = AudioComponentFindNext(NULL, &ac);
+if(!ac)
+{
+    NSLog(@"No Default Audio Component");
+    return 1;
+}
+
+AudioUnit audioUnit;
+OSStatus Error = AudioComponentInstanceNew(ac, &audioUnit);
+if(Error != noErr)
+{
+    NSLog(@"Audio Unit Creation Failed");
+    return 1;
+}
+
+AudioStreamBasicDescription asbd = {};
+asbd.mSampleRate = 48000;
+asbd.mFormatID = kAudioFormatLinearPCM;
+asbd.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
+asbd.mBytesPerPacket = 4;
+asbd.mFramesPerPacket = 1;
+asbd.mBytesPerFrame = 4;
+asbd.mChannelsPerFrame = 2;
+asbd.mBitsPerChannel = 16;
+
+
+OSStatus AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags, const AudioTimeStamp *InTimeStamp, UInt32 InBusNumber, UInt32 InNumberFrames, AudioBufferList *IOData)
+{
+    // Unused parameters
+    (void)IOActionFlags;
+    (void)InTimeStamp;
+    (void)InBusNumber;
+}
+
+AURenderCallbackStruct Callback = {};
+Callback.inputProc = AudioUnitCallback;
+Callback.inputProcRefCon = &SoundOutput;
+
+
+
+/*!
+    @struct            AURenderCallbackStruct
+    @abstract        Used by a host when registering a callback with the audio unit to provide input
+*/
+typedef struct AURenderCallbackStruct {
+    AURenderCallback            inputProc;
+    void *                        inputProcRefCon;
+} AURenderCallbackStruct;
+
+
