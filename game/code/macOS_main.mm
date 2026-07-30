@@ -50,6 +50,13 @@ global_variable NSUInteger    BitmapPitch;
 
 global_variable u8            OldKeyboardState[128] = {};
 
+i32 SampleFramesPerSecond = 48000;
+i32 ToneHz = 256;
+i16 ToneVolume = 3000;
+u32 RunningSampleIndex = 0;
+i32 SquareWavePeriod = SampleFramesPerSecond / ToneHz;
+i32 HalfSquareWavePeriod = SquareWavePeriod / 2;
+
 // clang-format off
 @interface HandmadeApplicationDelegate :
 NSObject<NSApplicationDelegate, NSWindowDelegate>
@@ -529,7 +536,7 @@ main()
 struct sound_output
 {
     
-}
+};
 
 sound_output SoundOutput = {};
 
@@ -547,8 +554,8 @@ if(!ac)
 }
 
 AudioUnit audioUnit;
-OSStatus Error = AudioComponentInstanceNew(ac, &audioUnit);
-if(Error != noErr)
+OSStatus Success = AudioComponentInstanceNew(ac, &audioUnit);
+if(!Success)
 {
     NSLog(@"Audio Unit Creation Failed");
     return 1;
@@ -568,24 +575,60 @@ asbd.mBitsPerChannel = 16;
 OSStatus AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags, const AudioTimeStamp *InTimeStamp, UInt32 InBusNumber, UInt32 InNumberFrames, AudioBufferList *IOData)
 {
     // Unused parameters
+    (void)InRefCon;
     (void)IOActionFlags;
     (void)InTimeStamp;
     (void)InBusNumber;
+    
+    i16 *OutputBuffer = (i16 *)IOData->mBuffers[0].mData;
+    for(UInt32 SampleFrame = 0; SampleFrame < InNumberFrames; ++SamplesFrame)
+    {
+        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ?  ToneVolume : -ToneVolume;
+        *OutputBuffer++ = SampleValue;
+        *OutputBuffer++ = SampleValue;
+    }
+    
+    int16* outputBuffer = (int16 *)ioData->mBuffers[0].mData;
+    const double phaseStep = (SoundOutput->Frequency
+                               / SoundOutput->SoundBuffer.SamplesPerSecond)
+                             * (2.0 * M_PI);
+
+    for (UInt32 i = 0; i < inNumberFrames; i++)
+    {
+        outputBuffer[i] = 5000 * sin(SoundOutput->RenderPhase);
+        SoundOutput->RenderPhase += phaseStep;
+    }
+
+    // Copy to the stereo (or the additional X.1 channels)
+    for(UInt32 i = 1; i < ioData->mNumberBuffers; i++)
+    {
+        memcpy(ioData->mBuffers[i].mData, outputBuffer, ioData->mBuffers[i].mDataByteSize);
+    }
+
+    return noErr;
 }
 
 AURenderCallbackStruct Callback = {};
 Callback.inputProc = AudioUnitCallback;
-Callback.inputProcRefCon = &SoundOutput;
+Callback.inputProcRefCon = NULL;
+
+OSStatus Success = AudioUnitSetProperty(audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &asbd, sizeof(asbd));
+if(!Success)
+{
+    NSLog(@"AudioUnit set stream format failed");
+    return 1;
+}
+
+OSStatus Success = AudioUnitSetProperty(audioUnit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &Callback, sizeof(Callback));
+if(!Success)
+{
+    NSLog(@"AudioUnit set callback failed");
+    return 1;
+}
+
+OSStatus Success = AudioUnitInitialize(audioUnit);
+OSStatus Success = AudioOutputUnitStart(audioUnit);
 
 
-
-/*!
-    @struct            AURenderCallbackStruct
-    @abstract        Used by a host when registering a callback with the audio unit to provide input
-*/
-typedef struct AURenderCallbackStruct {
-    AURenderCallback            inputProc;
-    void *                        inputProcRefCon;
-} AURenderCallbackStruct;
 
 
