@@ -1,8 +1,8 @@
+#include <AudioUnit/AudioUnit.h>
 #include <Cocoa/Cocoa.h>
+#include <GameController/GameController.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
-#include <GameController/GameController.h>
-#include <AudioUnit/AudioUnit.h>
 
 #include <limits.h>
 #include <mach-o/dyld.h>
@@ -50,26 +50,31 @@ global_variable NSUInteger    BitmapPitch;
 
 global_variable u8            OldKeyboardState[128] = {};
 
-global_variable i32 SampleFramesPerSecond = 48000;
-global_variable i32 ToneHz = 256;
-global_variable i16 ToneVolume = 3000;
-global_variable u32 RunningSampleIndex = 0;
-global_variable i32 SquareWavePeriod = SampleFramesPerSecond / ToneHz;
-global_variable i32 HalfSquareWavePeriod = SquareWavePeriod / 2;
-global_variable i32 BytesPerSample = sizeof(i16) * 2;
+global_variable i32           SampleFramesPerSecond = 48000;
+global_variable i32           ToneHz                = 256;
+global_variable i16           ToneVolume            = 3000;
+global_variable u32           RunningSampleIndex    = 0;
+global_variable i32           SquareWavePeriod = SampleFramesPerSecond / ToneHz;
+global_variable i32           HalfSquareWavePeriod = SquareWavePeriod / 2;
+global_variable i32           BytesPerSampleFrame  = sizeof(i16) * 2;
 
-OSStatus AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags, const AudioTimeStamp *InTimeStamp, UInt32 InBusNumber, UInt32 InNumberFrames, AudioBufferList *IOData)
+OSStatus
+AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
+                  const AudioTimeStamp *InTimeStamp, UInt32 InBusNumber,
+                  UInt32 InNumberFrames, AudioBufferList *IOData)
 {
     // Unused parameters
     (void)InRefCon;
     (void)IOActionFlags;
     (void)InTimeStamp;
     (void)InBusNumber;
-    
+
     i16 *OutputBuffer = (i16 *)IOData->mBuffers[0].mData;
-    for(UInt32 SampleFrame = 0; SampleFrame < InNumberFrames; ++SamplesFrame)
+    for(UInt32 SampleFrame = 0; SampleFrame < InNumberFrames; ++SampleFrame)
     {
-        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ?  ToneVolume : -ToneVolume;
+        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2)
+                              ? ToneVolume
+                              : -ToneVolume;
         *OutputBuffer++ = SampleValue;
         *OutputBuffer++ = SampleValue;
     }
@@ -86,21 +91,21 @@ NSObject<NSApplicationDelegate, NSWindowDelegate>
 
 - (NSSize)windowWillResize:(NSWindow *)Window toSize:(NSSize)FrameSize
 {
-    
+
     NSRect WindowRect  = [Window frame];
     NSRect ContentRect = [Window contentRectForFrameRect:WindowRect];
-    
+
     f32    WindowMinusContentWidth  = (WindowRect.size.width -
                                        ContentRect.size.width);
     f32    WindowMinusContentHeight = (WindowRect.size.height -
                                        ContentRect.size.height);
-    
+
     f32    NewContentHeight = (10.0f *
                                (FrameSize.width - WindowMinusContentWidth)) /
-        16.0f;
-    
+                              16.0f;
+
     FrameSize.height        = NewContentHeight + WindowMinusContentHeight;
-    
+
     return FrameSize;
 }
 
@@ -111,13 +116,13 @@ NSObject<NSApplicationDelegate, NSWindowDelegate>
     NSView       *ContentView   = [Window contentView];
     CAMetalLayer *MetalLayer    = (CAMetalLayer *)[ContentView layer];
     NSRect        BackingBounds = [ContentView
-                                   convertRectToBacking:[ContentView bounds]];
+        convertRectToBacking:[ContentView bounds]];
     [MetalLayer setDrawableSize:BackingBounds.size];
-    
+
     TextureWidth  = (NSUInteger)BackingBounds.size.width;
     TextureHeight = (NSUInteger)BackingBounds.size.height;
     BitmapPitch   = TextureWidth * BytesPerPixel;
-    
+
     // Maybe allocate texture only once and bitmap only once
     // Then only use however much of it you need
 }
@@ -148,10 +153,10 @@ GetExecutablePath(exe_state *State)
     char *ExecutablePath      = State->ExecutablePath;
     char *ExecutableDirectory = State->ExecutableDirectory;
     u32   Size                = sizeof(State->ExecutablePath);
-    
+
     _NSGetExecutablePath(ExecutablePath, &Size);
     ExecutableDirectory = ExecutablePath;
-    
+
     for(char *Scan = ExecutableDirectory; *Scan; ++Scan)
     {
         if(*Scan == '/')
@@ -159,7 +164,7 @@ GetExecutablePath(exe_state *State)
             ExecutableDirectory = Scan + 1;
         }
     }
-    
+
     State->ExecutableDirectory = ExecutableDirectory;
 }
 
@@ -186,7 +191,7 @@ BuildFullPath(exe_state *State, char *Filename, size_t FilenameSize,
 internal void
 RenderWeirdGradient(i32 BlueOffset, i32 GreenOffset)
 {
-    
+
     u8 *Row = (u8 *)BitmapMemory;
     for(i32 Y = 0; Y < (i32)TextureHeight; ++Y)
     {
@@ -195,7 +200,7 @@ RenderWeirdGradient(i32 BlueOffset, i32 GreenOffset)
         {
             u8 Blue  = X + BlueOffset;
             u8 Green = Y + GreenOffset;
-            
+
             *Pixel++ = ((u32)Blue << 0) | ((u32)Green << 8) | ((u32)255 << 24);
         }
         Row += BitmapPitch;
@@ -205,22 +210,22 @@ RenderWeirdGradient(i32 BlueOffset, i32 GreenOffset)
 i32
 main()
 {
-    
+
     @autoreleasepool
     {
-        
+
         // Note: Set window size, and then determine render texture size
         // later, we'll have a fixed render texture size that's fullscreen
         // Then, we'll sample it into the metal layer drawable texture
         NSString      *ApplicationName = @"Handmade Game";
         NSUInteger     WindowWidth     = 960;
         NSUInteger     WindowHeight    = 600;
-        
+
         NSApplication *application     = [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-        
+
         HandmadeApplicationDelegate *ApplicationDelegate;
-        
+
         ApplicationDelegate = [[HandmadeApplicationDelegate alloc] init];
         if(!ApplicationDelegate)
         {
@@ -228,36 +233,36 @@ main()
             return 1;
         }
         [application setDelegate:ApplicationDelegate];
-        
+
         [NSApp finishLaunching];
-        
+
         NSRect ScreenRect   = [[NSScreen mainScreen] frame];
-        
+
         NSRect InitialFrame = NSMakeRect(
-                                         (ScreenRect.size.width - WindowWidth) * 0.5f,
-                                         (ScreenRect.size.height - WindowHeight) * 0.5f, WindowWidth,
-                                         WindowHeight);
-        
+            (ScreenRect.size.width - WindowWidth) * 0.5f,
+            (ScreenRect.size.height - WindowHeight) * 0.5f, WindowWidth,
+            WindowHeight);
+
         NSWindow *Window = [[NSWindow alloc]
-                            initWithContentRect:InitialFrame
-                            styleMask:NSWindowStyleMaskTitled |
-                            NSWindowStyleMaskClosable |
-                            NSWindowStyleMaskMiniaturizable |
-                            NSWindowStyleMaskResizable
-                            backing:NSBackingStoreBuffered
-                            defer:NO];
+            initWithContentRect:InitialFrame
+                      styleMask:NSWindowStyleMaskTitled |
+                                NSWindowStyleMaskClosable |
+                                NSWindowStyleMaskMiniaturizable |
+                                NSWindowStyleMaskResizable
+                        backing:NSBackingStoreBuffered
+                          defer:NO];
         if(!Window)
         {
             NSLog(@"Window allocation failed");
             return 1;
         }
-        
+
         [Window setBackgroundColor:[NSColor windowBackgroundColor]];
         [Window setDelegate:ApplicationDelegate];
         [Window setMinSize:NSMakeSize(480, 300)];
         [Window setTitle:ApplicationName];
         [Window makeKeyAndOrderFront:nil];
-        
+
         exe_state State;
         GetExecutablePath(&State);
         char MetalLibraryFilename[] = "shaders.metallib";
@@ -265,31 +270,31 @@ main()
         BuildFullPath(&State, MetalLibraryFilename,
                       sizeof(MetalLibraryFilename), MetalLibraryFullPath);
         NSString *NSString_MetalLibraryFullPath = [NSString
-                                                   stringWithUTF8String:MetalLibraryFullPath];
+            stringWithUTF8String:MetalLibraryFullPath];
         NSURL    *NSURL_MetalLibraryFullPath    = [NSURL
-                                                   fileURLWithPath:NSString_MetalLibraryFullPath];
-        
+            fileURLWithPath:NSString_MetalLibraryFullPath];
+
         Device = MTLCreateSystemDefaultDevice();
         if(!Device)
         {
             NSLog(@"No Metal device available");
             return 1;
         }
-        
+
         NSError       *Errors       = nil;
         id<MTLLibrary> MetalLibrary = [Device
-                                       newLibraryWithURL:NSURL_MetalLibraryFullPath
-                                       error:&Errors];
+            newLibraryWithURL:NSURL_MetalLibraryFullPath
+                        error:&Errors];
         if(!MetalLibrary)
         {
             NSLog(@"Library load failed: %@", [Errors localizedDescription]);
             return 1;
         }
         id<MTLFunction> VertexFunction   = [MetalLibrary
-                                            newFunctionWithName:@"VertexFunction"];
+            newFunctionWithName:@"VertexFunction"];
         id<MTLFunction> FragmentFunction = [MetalLibrary
-                                            newFunctionWithName:@"FragmentFunction"];
-        
+            newFunctionWithName:@"FragmentFunction"];
+
         CAMetalLayer   *MetalLayer       = [[CAMetalLayer alloc] init];
         if(!MetalLayer)
         {
@@ -301,62 +306,62 @@ main()
         // NOTE: drawable size is set later using application delegate
         [MetalLayer setFramebufferOnly:YES];
         [MetalLayer setPresentsWithTransaction:NO];
-        
+
         NSView *ContentView = [Window contentView];
         [ContentView
-         setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+            setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
         [ContentView setWantsLayer:YES];
         [ContentView setLayer:MetalLayer];
-        
+
         id<MTLCommandQueue> CommandQueue = [Device
-                                            newCommandQueueWithMaxCommandBufferCount:64];
+            newCommandQueueWithMaxCommandBufferCount:64];
         if(!CommandQueue)
         {
             NSLog(@"CommandQueue allocation failed");
             return 1;
         }
-        
+
         TextureDescriptor = [MTLTextureDescriptor
-                             texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                             width:3456
-                             height:2234
-                             mipmapped:NO];
-        
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                         width:3456
+                                        height:2234
+                                     mipmapped:NO];
+
         Texture           = [Device newTextureWithDescriptor:TextureDescriptor];
         if(!Texture)
         {
             NSLog(@"Texture allocation failed");
             return 1;
         }
-        
+
         kern_return_t Result = vm_allocate(
-                                           mach_task_self(), (vm_address_t *)&BitmapMemory,
-                                           3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
+            mach_task_self(), (vm_address_t *)&BitmapMemory,
+            3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
         if(Result != KERN_SUCCESS)
         {
             NSLog(@"vm_allocate for BitmapMemory failed: %s",
                   mach_error_string(Result));
             return 1;
         }
-        
+
         [ApplicationDelegate ResizeBitmapAndTexturesForWindow:Window];
-        
+
         float VerticesAndUVs[] = {
             -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f,
             1.0f,  -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
         };
-        
+
         // Note: Buffers expensive to create
         id<MTLBuffer> VertexBuffer = [Device
-                                      newBufferWithBytes:VerticesAndUVs
-                                      length:sizeof(VerticesAndUVs)
-                                      options:0];
+            newBufferWithBytes:VerticesAndUVs
+                        length:sizeof(VerticesAndUVs)
+                       options:0];
         if(!VertexBuffer)
         {
             NSLog(@"VertexBuffer failed");
             return 1;
         }
-        
+
         MTLRenderPipelineDescriptor *RenderPipelineDescriptor =
             [[MTLRenderPipelineDescriptor alloc] init];
         if(!RenderPipelineDescriptor)
@@ -364,40 +369,100 @@ main()
             NSLog(@"RenderPipelineDescriptor failed");
             return 1;
         }
-        
+
         RenderPipelineDescriptor.vertexFunction   = VertexFunction;
         RenderPipelineDescriptor.fragmentFunction = FragmentFunction;
         RenderPipelineDescriptor.colorAttachments[0].pixelFormat =
             MTLPixelFormatBGRA8Unorm;
-        
+
         MTLVertexDescriptor *VertexDescriptor = [[MTLVertexDescriptor alloc]
-                                                 init];
+            init];
         if(!VertexDescriptor)
         {
             NSLog(@"VertexDescriptor failed");
             return 1;
         }
-        
+
         VertexDescriptor.attributes[0].format      = MTLVertexFormatFloat2;
         VertexDescriptor.attributes[0].bufferIndex = 0;
         VertexDescriptor.attributes[0].offset      = 0;
         VertexDescriptor.layouts[0].stride         = 2 * sizeof(float);
         VertexDescriptor.layouts[0].stepFunction =
             MTLVertexStepFunctionPerVertex;
-        
+
         RenderPipelineDescriptor.vertexDescriptor      = VertexDescriptor;
-        
+
         Errors                                         = nil;
         id<MTLRenderPipelineState> RenderPipelineState = [Device
-                                                          newRenderPipelineStateWithDescriptor:RenderPipelineDescriptor
-                                                          error:&Errors];
+            newRenderPipelineStateWithDescriptor:RenderPipelineDescriptor
+                                           error:&Errors];
         if(!RenderPipelineState)
         {
             NSLog(@"RenderPipelineState failed: %@",
                   [Errors localizedDescription]);
             return 1;
         }
-        
+
+        AudioComponentDescription OutputUnitDescription = {};
+        OutputUnitDescription.componentType             = kAudioUnitType_Output;
+        OutputUnitDescription.componentSubType =
+            kAudioUnitSubType_DefaultOutput;
+        OutputUnitDescription.componentManufacturer =
+            kAudioUnitManufacturer_Apple;
+
+        AudioComponent OutputUnitComponent = AudioComponentFindNext(
+            NULL, &OutputUnitDescription);
+        if(!OutputUnitComponent)
+        {
+            NSLog(@"No Default Audio Component");
+            return 1;
+        }
+
+        AudioUnit OutputUnit;
+        OSStatus  Error = AudioComponentInstanceNew(OutputUnitComponent,
+                                                      &OutputUnit);
+        if(Error)
+        {
+            NSLog(@"Audio Unit Creation Failed");
+            return 1;
+        }
+
+        AudioStreamBasicDescription StreamFormat = {};
+        StreamFormat.mSampleRate                 = SampleFramesPerSecond;
+        StreamFormat.mFormatID                   = kAudioFormatLinearPCM;
+        StreamFormat.mFormatFlags       = kAudioFormatFlagIsSignedInteger |
+                                          kAudioFormatFlagIsPacked;
+        StreamFormat.mBytesPerPacket    = 4;
+        StreamFormat.mFramesPerPacket   = 1;
+        StreamFormat.mBytesPerFrame     = BytesPerSampleFrame;
+        StreamFormat.mChannelsPerFrame  = 2;
+        StreamFormat.mBitsPerChannel    = 16;
+
+        AURenderCallbackStruct Callback = {};
+        Callback.inputProc              = AudioUnitCallback;
+        Callback.inputProcRefCon        = NULL;
+
+        Error                         = AudioUnitSetProperty(
+            OutputUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input,
+            0, &StreamFormat, sizeof(StreamFormat));
+        if(Error)
+        {
+            NSLog(@"AudioUnit set stream format failed");
+            return 1;
+        }
+
+        Error = AudioUnitSetProperty(
+            OutputUnit, kAudioUnitProperty_SetRenderCallback,
+            kAudioUnitScope_Input, 0, &Callback, sizeof(Callback));
+        if(Error)
+        {
+            NSLog(@"AudioUnit set callback failed");
+            return 1;
+        }
+
+        Error = AudioUnitInitialize(OutputUnit);
+        Error = AudioOutputUnitStart(OutputUnit);
+
         NSEvent *Event;
         i32      XOffset = 0;
         i32      YOffset = 0;
@@ -405,14 +470,14 @@ main()
         {
             @autoreleasepool
             {
-                
+
                 do
                 {
                     Event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                             untilDate:nil
-                             inMode:NSDefaultRunLoopMode
-                             dequeue:YES];
-                    
+                                               untilDate:nil
+                                                  inMode:NSDefaultRunLoopMode
+                                                 dequeue:YES];
+
                     NSEventType EventType = [Event type];
                     switch(EventType)
                     {
@@ -426,7 +491,7 @@ main()
                                       KeyCode, KeyCode);
                                 return 1;
                             }
-                            
+
                             /*NSEventModifierFlags ModifierFlags = [Event
                             modifierFlags]; i32 CommandKeyFlag = (ModifierFlags
                             & NSCommandKeyMask); i32 ControlKeyFlag =
@@ -434,10 +499,10 @@ main()
                             AlternateKeyFlag = (ModifierFlags &
                             NSAlternateKeyMask); i32 ShiftKeyFlag =
                             (ModifierFlags & NSShiftKeyMask);*/
-                            
+
                             b32 IsDown  = ((EventType == NSKeyDown) ? 1 : 0);
                             b32 WasDown = OldKeyboardState[KeyCode];
-                            
+
                             if(IsDown != WasDown)
                             {
                                 switch(KeyCode)
@@ -458,20 +523,20 @@ main()
                                     break;
                                 }
                             }
-                            
+
                             OldKeyboardState[KeyCode] = IsDown;
                         }
                         break;
-                        
+
                         default:
-                        [NSApp sendEvent:Event];
+                            [NSApp sendEvent:Event];
                     }
-                    
+
                 } while(Event != nil);
-                
+
                 NSArray<GCController *> *Controllers =
                     [GCController controllers];
-                
+
                 for(GCController *Controller in Controllers)
                 {
                     GCExtendedGamepad *Gamepad = [Controller extendedGamepad];
@@ -481,35 +546,34 @@ main()
                         BOOL B_Button      = [[Gamepad buttonB] isPressed];
                         BOOL X_Button      = [[Gamepad buttonX] isPressed];
                         BOOL Y_Button      = [[Gamepad buttonY] isPressed];*/
-                        
-                        f32  LeftStick_X   = [[[Gamepad leftThumbstick] xAxis]
-                                              value];
-                        f32  LeftStick_Y   = [[[Gamepad leftThumbstick] yAxis]
-                                              value];
-                        /*f32  RightStick_X  = [[[Gamepad rightThumbstick] xAxis]
+
+                        f32 LeftStick_X  = [[[Gamepad leftThumbstick] xAxis]
                             value];
-                        f32  RightStick_Y  = [[[Gamepad rightThumbstick] yAxis]
-                            value];*/
-                        
-                        XOffset           += (i32)(LeftStick_X * 8.0f);
-                        YOffset           += (i32)(LeftStick_Y * 8.0f);
+                        f32 LeftStick_Y  = [[[Gamepad leftThumbstick] yAxis]
+                            value];
+                        /*f32  RightStick_X  = [[[Gamepad rightThumbstick]
+                        xAxis] value]; f32  RightStick_Y  = [[[Gamepad
+                        rightThumbstick] yAxis] value];*/
+
+                        XOffset         += (i32)(LeftStick_X * 8.0f);
+                        YOffset         += (i32)(LeftStick_Y * 8.0f);
                     }
                 }
-                
+
                 RenderWeirdGradient(XOffset, YOffset);
-                
+
                 [Texture replaceRegion:MTLRegionMake2D(0, 0, TextureWidth,
                                                        TextureHeight)
-                 mipmapLevel:0
-                 withBytes:BitmapMemory
-                 bytesPerRow:BitmapPitch];
-                
+                           mipmapLevel:0
+                             withBytes:BitmapMemory
+                           bytesPerRow:BitmapPitch];
+
                 id<MTLCommandBuffer> CommandBuffer =
                     [CommandQueue commandBuffer];
-                
+
                 MTLRenderPassDescriptor *RenderPassDescriptor =
                     [MTLRenderPassDescriptor renderPassDescriptor];
-                
+
                 id<CAMetalDrawable> Drawable = [MetalLayer nextDrawable];
                 if(!Drawable)
                 {
@@ -522,99 +586,33 @@ main()
                     MTLLoadActionDontCare;
                 RenderPassDescriptor.colorAttachments[0].storeAction =
                     MTLStoreActionStore;
-                
+
                 id<MTLRenderCommandEncoder> RenderCommandEncoder =
                     [CommandBuffer renderCommandEncoderWithDescriptor:
-                     RenderPassDescriptor];
-                
+                                       RenderPassDescriptor];
+
                 [RenderCommandEncoder
-                 setRenderPipelineState:RenderPipelineState];
-                
+                    setRenderPipelineState:RenderPipelineState];
+
                 [RenderCommandEncoder setVertexBuffer:VertexBuffer
-                 offset:0
-                 atIndex:0];
+                                               offset:0
+                                              atIndex:0];
                 [RenderCommandEncoder setFragmentTexture:Texture atIndex:0];
-                
+
                 [RenderCommandEncoder drawPrimitives:MTLPrimitiveTypeTriangle
-                 vertexStart:0
-                 vertexCount:6];
-                
+                                         vertexStart:0
+                                         vertexCount:6];
+
                 [RenderCommandEncoder endEncoding];
                 [CommandBuffer presentDrawable:Drawable];
                 [CommandBuffer commit];
                 [CommandBuffer waitUntilCompleted];
-                
+
                 ++XOffset;
                 YOffset += 2;
             }
         }
-        
+
         NSLog(@"Handmade Game finished running\n");
     }
 }
-
-struct sound_output
-{
-    
-};
-
-sound_output SoundOutput = {};
-
-
-AudioComponentDescription acd = {};
-acd.componentType = kAudioUnitType_Output;
-acd.componentSubType = kAudioUnitSubType_DefaultOutput;
-acd.componentManufacturer = kAudioUnitManufacturer_Apple;
-
-AudioComponent ac = AudioComponentFindNext(NULL, &ac);
-if(!ac)
-{
-    NSLog(@"No Default Audio Component");
-    return 1;
-}
-
-AudioUnit audioUnit;
-OSStatus Success = AudioComponentInstanceNew(ac, &audioUnit);
-if(!Success)
-{
-    NSLog(@"Audio Unit Creation Failed");
-    return 1;
-}
-
-AudioStreamBasicDescription asbd = {};
-asbd.mSampleRate = 48000;
-asbd.mFormatID = kAudioFormatLinearPCM;
-asbd.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
-asbd.mBytesPerPacket = 4;
-asbd.mFramesPerPacket = 1;
-asbd.mBytesPerFrame = 4;
-asbd.mChannelsPerFrame = 2;
-asbd.mBitsPerChannel = 16;
-
-
-
-
-AURenderCallbackStruct Callback = {};
-Callback.inputProc = AudioUnitCallback;
-Callback.inputProcRefCon = NULL;
-
-OSStatus Success = AudioUnitSetProperty(audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &asbd, sizeof(asbd));
-if(!Success)
-{
-    NSLog(@"AudioUnit set stream format failed");
-    return 1;
-}
-
-OSStatus Success = AudioUnitSetProperty(audioUnit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &Callback, sizeof(Callback));
-if(!Success)
-{
-    NSLog(@"AudioUnit set callback failed");
-    return 1;
-}
-
-OSStatus Success = AudioUnitInitialize(audioUnit);
-OSStatus Success = AudioOutputUnitStart(audioUnit);
-
-
-
-
