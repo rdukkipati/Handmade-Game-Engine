@@ -2,7 +2,7 @@
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
 #include <GameController/GameController.h>
-#include <CoreAudio/AudioHardware.h>
+#include <AudioUnit/AudioUnit.h>
 
 #include <limits.h>
 #include <mach-o/dyld.h>
@@ -50,12 +50,32 @@ global_variable NSUInteger    BitmapPitch;
 
 global_variable u8            OldKeyboardState[128] = {};
 
-i32 SampleFramesPerSecond = 48000;
-i32 ToneHz = 256;
-i16 ToneVolume = 3000;
-u32 RunningSampleIndex = 0;
-i32 SquareWavePeriod = SampleFramesPerSecond / ToneHz;
-i32 HalfSquareWavePeriod = SquareWavePeriod / 2;
+global_variable i32 SampleFramesPerSecond = 48000;
+global_variable i32 ToneHz = 256;
+global_variable i16 ToneVolume = 3000;
+global_variable u32 RunningSampleIndex = 0;
+global_variable i32 SquareWavePeriod = SampleFramesPerSecond / ToneHz;
+global_variable i32 HalfSquareWavePeriod = SquareWavePeriod / 2;
+global_variable i32 BytesPerSample = sizeof(i16) * 2;
+
+OSStatus AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags, const AudioTimeStamp *InTimeStamp, UInt32 InBusNumber, UInt32 InNumberFrames, AudioBufferList *IOData)
+{
+    // Unused parameters
+    (void)InRefCon;
+    (void)IOActionFlags;
+    (void)InTimeStamp;
+    (void)InBusNumber;
+    
+    i16 *OutputBuffer = (i16 *)IOData->mBuffers[0].mData;
+    for(UInt32 SampleFrame = 0; SampleFrame < InNumberFrames; ++SamplesFrame)
+    {
+        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ?  ToneVolume : -ToneVolume;
+        *OutputBuffer++ = SampleValue;
+        *OutputBuffer++ = SampleValue;
+    }
+
+    return noErr;
+}
 
 // clang-format off
 @interface HandmadeApplicationDelegate :
@@ -572,41 +592,7 @@ asbd.mChannelsPerFrame = 2;
 asbd.mBitsPerChannel = 16;
 
 
-OSStatus AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags, const AudioTimeStamp *InTimeStamp, UInt32 InBusNumber, UInt32 InNumberFrames, AudioBufferList *IOData)
-{
-    // Unused parameters
-    (void)InRefCon;
-    (void)IOActionFlags;
-    (void)InTimeStamp;
-    (void)InBusNumber;
-    
-    i16 *OutputBuffer = (i16 *)IOData->mBuffers[0].mData;
-    for(UInt32 SampleFrame = 0; SampleFrame < InNumberFrames; ++SamplesFrame)
-    {
-        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2) ?  ToneVolume : -ToneVolume;
-        *OutputBuffer++ = SampleValue;
-        *OutputBuffer++ = SampleValue;
-    }
-    
-    int16* outputBuffer = (int16 *)ioData->mBuffers[0].mData;
-    const double phaseStep = (SoundOutput->Frequency
-                               / SoundOutput->SoundBuffer.SamplesPerSecond)
-                             * (2.0 * M_PI);
 
-    for (UInt32 i = 0; i < inNumberFrames; i++)
-    {
-        outputBuffer[i] = 5000 * sin(SoundOutput->RenderPhase);
-        SoundOutput->RenderPhase += phaseStep;
-    }
-
-    // Copy to the stereo (or the additional X.1 channels)
-    for(UInt32 i = 1; i < ioData->mNumberBuffers; i++)
-    {
-        memcpy(ioData->mBuffers[i].mData, outputBuffer, ioData->mBuffers[i].mDataByteSize);
-    }
-
-    return noErr;
-}
 
 AURenderCallbackStruct Callback = {};
 Callback.inputProc = AudioUnitCallback;
