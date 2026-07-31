@@ -1,8 +1,8 @@
-#include <AudioUnit/AudioUnit.h>
 #include <Cocoa/Cocoa.h>
-#include <GameController/GameController.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
+#include <GameController/GameController.h>
+#include <AudioUnit/AudioUnit.h>
 
 #include <limits.h>
 #include <mach-o/dyld.h>
@@ -420,7 +420,7 @@ main()
 
         AudioUnit OutputUnit;
         OSStatus  Error = AudioComponentInstanceNew(OutputUnitComponent,
-                                                      &OutputUnit);
+                                                    &OutputUnit);
         if(Error)
         {
             NSLog(@"Audio Unit Creation Failed");
@@ -442,7 +442,7 @@ main()
         Callback.inputProc              = AudioUnitCallback;
         Callback.inputProcRefCon        = NULL;
 
-        Error                         = AudioUnitSetProperty(
+        Error                           = AudioUnitSetProperty(
             OutputUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input,
             0, &StreamFormat, sizeof(StreamFormat));
         if(Error)

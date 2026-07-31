@@ -31,6 +31,10 @@ AlignArrayOfStructures: Right
 BreakBeforeBraces: Allman
 AlignAfterOpenBracket: true
 
+SortIncludes:
+    Enabled: false
+
+IncludeBlocks: Preserve
 
 IndentWidth: 4
 UseTab: Never
