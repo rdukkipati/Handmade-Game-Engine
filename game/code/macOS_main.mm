@@ -14,6 +14,9 @@
 
 #include "macOS_keyboard.h"
 
+// TODO: Implement sine ourselves
+#include <math.h>
+
 #define internal        static
 #define local_persist   static
 #define global_variable static
@@ -38,6 +41,10 @@ typedef uint64_t      u64;
 typedef float         f32;
 typedef double        f64;
 
+#define PI 3.14159265359f
+#define PI_2 6.28318530718f
+
+
 global_variable b32   GLOBAL_RUNNING          = true;
 global_variable void *BitmapMemory            = NULL;
 global_variable id<MTLTexture>        Texture = nil;
@@ -53,10 +60,9 @@ global_variable u8            OldKeyboardState[128] = {};
 global_variable i32           SampleFramesPerSecond = 48000;
 global_variable i32           ToneHz                = 256;
 global_variable i16           ToneVolume            = 3000;
-global_variable u32           RunningSampleIndex    = 0;
-global_variable i32           SquareWavePeriod = SampleFramesPerSecond / ToneHz;
-global_variable i32           HalfSquareWavePeriod = SquareWavePeriod / 2;
+global_variable i32           WavePeriod = SampleFramesPerSecond / ToneHz;
 global_variable i32           BytesPerSampleFrame  = sizeof(i16) * 2;
+global_variable f32 Time = 0;
 
 OSStatus
 AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
@@ -72,21 +78,25 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     i16 *OutputBuffer = (i16 *)IOData->mBuffers[0].mData;
     for(UInt32 SampleFrame = 0; SampleFrame < InNumberFrames; ++SampleFrame)
     {
-        i16 SampleValue = ((RunningSampleIndex++ / HalfSquareWavePeriod) % 2)
-                              ? ToneVolume
-                              : -ToneVolume;
+        f32 SineValue = sinf(Time);
+        i16 SampleValue = (i16)(SineValue * ToneVolume);
         *OutputBuffer++ = SampleValue;
         *OutputBuffer++ = SampleValue;
+        
+        Time += (PI_2 * 1.0f / (f32)WavePeriod);
+        if(Time >= PI_2)
+        {
+            Time = 0;
+        }
     }
 
     return noErr;
 }
 
-// clang-format off
-@interface HandmadeApplicationDelegate :
-NSObject<NSApplicationDelegate, NSWindowDelegate>
+@interface HandmadeApplicationDelegate
+    : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
-// clang-format on
+
 @implementation HandmadeApplicationDelegate
 
 - (NSSize)windowWillResize:(NSWindow *)Window toSize:(NSSize)FrameSize
