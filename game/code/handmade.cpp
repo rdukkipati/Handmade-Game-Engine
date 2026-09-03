@@ -1,3 +1,14 @@
+#if HANDMADE_SLOW
+#define Assert(Expression) if(!(Expression)) { __builtin_trap();}
+#else
+#define Assert(Expression)
+#endif
+
+#define Kilobytes(Value) ((u64)(Value)*1024)
+#define Megabytes(Value) (Kilobytes(Value)*1024)
+#define Gigabytes(Value) (Megabytes(Value)*1024)
+#define Terabytes(Value) (Gigabytes(Value)*1024)
+
 struct game_offscreen_buffer
 {
     void *Memory;
@@ -55,6 +66,24 @@ struct game_input
     game_controller_input Controllers[4];
 };
 
+struct game_memory
+{
+    b32 IsInitialized;
+    
+    u64 PermanentStorageSize;
+    void *PermanentStorage;
+    
+    u64 TransientStorageSize;
+    void *TransientStorage;
+};
+
+struct game_state
+{
+    i32 ToneHz;
+    i32 GreenOffset;
+    i32 BlueOffset;
+};
+
 internal void
 GameOutputSound(game_sound_output_buffer *Sound, i32 ToneHz)
 {
@@ -62,6 +91,7 @@ GameOutputSound(game_sound_output_buffer *Sound, i32 ToneHz)
     i16 ToneVolume = 3000;
     i32 WavePeriod = Sound->SampleFramesPerSecond / ToneHz;
     i16 *Memory = Sound->Memory;
+    
     for(i32 SampleFrame = 0; SampleFrame < Sound->SampleFramesToWrite; ++SampleFrame)
     {
         f32 SineValue = sinf(Time);
@@ -95,31 +125,38 @@ RenderWeirdGradient(game_offscreen_buffer *Bitmap, i32 BlueOffset, i32 GreenOffs
 }
 
 internal void
-GameUpdateAndRender(game_input *Input, game_offscreen_buffer *Bitmap, game_sound_output_buffer *Sound)
+GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffer *Bitmap, game_sound_output_buffer *Sound)
 {
-    local_persist i32 BlueOffset = 0;
-    local_persist i32 GreenOffset = 0;
-    local_persist i32 ToneHz = 256;
+    
+    Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
+    
+    game_state *GameState = (game_state *)Memory->PermanentStorage;
+    
+    if(!Memory->IsInitialized)
+    {
+        GameState->ToneHz = 256;
+        Memory->IsInitialized = true;
+    }
     
     game_controller_input *Input0 = &Input->Controllers[0];
     
     if(Input0->IsAnalog)
     {
-        BlueOffset += (i32)4.0f*(Input0->EndX);
-        ToneHz = 256 + (int)(128.0f*(Input0->EndY));
+        GameState->BlueOffset += (i32)4.0f*(Input0->EndX);
+        GameState->ToneHz = 256 + (int)(128.0f*(Input0->EndY));
     }
     
     else
     {
-        
+        // Digital movement tuning
     }
     
     if(Input0->Down.EndedDown)
     {
-        GreenOffset += 1;
+        GameState->GreenOffset += 1;
     }
     
-    GameOutputSound(Sound, ToneHz);
-    RenderWeirdGradient(Bitmap, BlueOffset, GreenOffset);
+    GameOutputSound(Sound, GameState->ToneHz);
+    RenderWeirdGradient(Bitmap, GameState->BlueOffset, GameState->GreenOffset);
     
 }

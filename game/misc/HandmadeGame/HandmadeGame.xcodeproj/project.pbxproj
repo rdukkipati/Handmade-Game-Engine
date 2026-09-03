@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
+		A0AA9A25304A0EA10086975C /* handmade.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = handmade.cpp; sourceTree = "<group>"; };
 		A0DC6A9C3006087900390534 /* build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
 		A0DC6A9D3006087900390534 /* macOS_main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = macOS_main.mm; sourceTree = "<group>"; };
 		A0DC6A9E3006087900390534 /* run.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = run.sh; sourceTree = "<group>"; };
@@ -26,6 +27,7 @@
 			children = (
 				A0DC6A9C3006087900390534 /* build.sh */,
 				A0DC6A9D3006087900390534 /* macOS_main.mm */,
+				A0AA9A25304A0EA10086975C /* handmade.cpp */,
 				A0DC6A9E3006087900390534 /* run.sh */,
 				A0DC6A9F3006087900390534 /* shaders.metal */,
 			);

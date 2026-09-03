@@ -115,6 +115,15 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     return noErr;
 }
 
+internal void
+ProcessButton(GCControllerButtonInput *Button, game_button_state *OldState, game_button_state *NewState)
+{
+    
+    NewState->EndedDown = [Button isPressed];
+    NewState->HalfTransitionCount = (OldState->EndedDown != NewState->EndedDown) ? 1 : 0;
+    
+}
+
 @interface HandmadeApplicationDelegate
 : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
@@ -227,6 +236,31 @@ main()
     @autoreleasepool
     {
         
+#if HANDMADE_INTERNAL
+        vm_address_t BaseAddress = (vm_address_t)Terabytes(2);
+        int Flags = VM_FLAGS_FIXED;
+#else
+        vm_address_t BaseAddress = 0;
+        int Flags = VM_FLAGS_ANYWHERE;
+#endif
+        
+        game_memory GameMemory = {};
+        GameMemory.PermanentStorageSize = Megabytes(64);
+        GameMemory.TransientStorageSize = Gigabytes(4);
+        
+        u64 TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
+        
+        kern_return_t Result;
+        Result = vm_allocate(mach_task_self(), &BaseAddress, TotalSize, Flags);
+        if(Result != KERN_SUCCESS)
+        {
+            NSLog(@"vm_allocate for game memory failed: %s", mach_error_string(Result));
+            return 1;
+        }
+        
+        GameMemory.PermanentStorage = (void *)BaseAddress;
+        GameMemory.TransientStorage = ((u8 *)GameMemory.PermanentStorage + GameMemory.PermanentStorageSize);
+        
         mach_timebase_info_data_t Timebase;
         mach_timebase_info(&Timebase);
         
@@ -238,8 +272,6 @@ main()
         
         game_offscreen_buffer GameBitmap = {};
         
-        
-        kern_return_t Result;
         
         // Allocate macOS_Sound
         Result = vm_allocate(mach_task_self(), (vm_address_t *)&macOS_Sound.RingBuffer, RingBufferSizeInBytes, VM_FLAGS_ANYWHERE);
@@ -514,8 +546,6 @@ main()
         Error = AudioOutputUnitStart(OutputUnit);
         
         NSEvent *Event;
-        i32      XOffset      = 0;
-        i32      YOffset      = 0;
         
         u64      StartCounter = mach_absolute_time();
         
@@ -599,10 +629,12 @@ main()
                 i32 ControllerIndex = 0;
                 for(GCController *Controller in Controllers)
                 {
+                    
                     if(ControllerIndex >= 4)
                     {
                         break;
                     }
+                    
                     game_controller_input *OldController = &OldInput->Controllers[ControllerIndex];
                     game_controller_input *NewController = &NewInput->Controllers[ControllerIndex];
                     
@@ -614,24 +646,29 @@ main()
                         NewController->StartX = OldController->EndX;
                         NewController->StartY = OldController->EndY;
                         
-                        /*BOOL A_Button      = [[Gamepad buttonA] isPressed];
-                        BOOL B_Button      = [[Gamepad buttonB] isPressed];
-                        BOOL X_Button      = [[Gamepad buttonX] isPressed];
-                        BOOL Y_Button      = [[Gamepad buttonY] isPressed];*/
-                        
                         f32 LeftStick_X  = [[[Gamepad leftThumbstick] xAxis]
                                             value];
                         f32 LeftStick_Y  = [[[Gamepad leftThumbstick] yAxis]
                                             value];
-                        /*f32  RightStick_X  = [[[Gamepad rightThumbstick]
+                        
+                        NewController->MinX = NewController->MaxX = NewController->EndX = LeftStick_X;
+                        NewController->MinY = NewController->MaxY = NewController->EndY = LeftStick_Y;
+                        
+                        /*
+                        f32  RightStick_X  = [[[Gamepad rightThumbstick]
                         xAxis] value]; f32  RightStick_Y  = [[[Gamepad
-                        rightThumbstick] yAxis] value];*/
+                        rightThumbstick] yAxis] value];
+*/
                         
-                        XOffset         += (i32)(LeftStick_X * 8.0f);
-                        YOffset         += (i32)(LeftStick_Y * 8.0f);
+                        ProcessButton([Gamepad buttonA], &OldController->Down, &NewController->Down);
+                        ProcessButton([Gamepad buttonB], &OldController->Right, &NewController->Right);
+                        ProcessButton([Gamepad buttonX], &OldController->Left, &NewController->Left);
+                        ProcessButton([Gamepad buttonY], &OldController->Up,
+                                      &NewController->Up);
+                        ProcessButton([Gamepad leftShoulder], &OldController->LeftShoulder, &NewController->LeftShoulder);
+                        ProcessButton([Gamepad rightShoulder], &OldController->RightShoulder, &NewController->RightShoulder);
                         
-                        ToneHz = 512 + (i32)(256.0f * LeftStick_Y);
-                        NSLog(@"LeftStick_Y = %f, ToneHz = %d", LeftStick_Y, ToneHz);
+                        
                     }
                 }
                 
@@ -660,7 +697,7 @@ main()
                 GameBitmap.Height = TextureHeight;
                 GameBitmap.Pitch = BitmapPitch;
                 
-                GameUpdateAndRender(&GameBitmap, XOffset, YOffset, &GameSound, ToneHz);
+                GameUpdateAndRender(&GameMemory, NewInput, &GameBitmap, &GameSound);
                 
                 //Copy game sound into ring buffer
                 i16 *Memory = GameSound.Memory;
@@ -724,9 +761,11 @@ main()
                 [CommandBuffer commit];
                 [CommandBuffer waitUntilCompleted];
                 
-                ++XOffset;
-                YOffset += 2;
             }
+            
+            game_input *Temp = NewInput;
+            NewInput = OldInput;
+            OldInput = Temp;
             
             u64 EndCounter  = mach_absolute_time();
             u64 Elapsed     = EndCounter - StartCounter;
@@ -736,6 +775,8 @@ main()
             
             StartCounter = EndCounter;
         }
+        
+        AudioOutputUnitStop(OutputUnit);
         
         NSLog(@"Handmade Game finished running\n");
     }
