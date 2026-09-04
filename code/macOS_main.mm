@@ -29,7 +29,7 @@
 // Reducing c runtime
 //
 
-
+#include <sys/stat.h>
 
 typedef int8_t   i8;
 typedef int16_t  i16;
@@ -68,6 +68,92 @@ global_variable i32           BytesPerSampleFrame = sizeof(i16) * 2;
 global_variable i32 Latency = 3200;
 global_variable i32 GameSoundSizeInBytes = Latency * BytesPerSampleFrame;
 global_variable i32 RingBufferSizeInBytes = SampleFramesPerSecond * BytesPerSampleFrame * 2;
+
+internal debug_read_file_result
+DEBUGPlatformReadEntireFile(const char *Filename)
+{
+    debug_read_file_result Result = {};
+    i32 FileDescriptor = open(Filename, O_RDONLY);
+    if(FileDescriptor != -1)
+    {
+        struct stat FileStat;
+        if(fstat(FileDescriptor, &FileStat) == 0)
+        {
+            u32 FileSize32 = FileStat.st_size;
+            i32 result = -1;
+            
+            Result.Contents = (char *)malloc(FileSize32);
+            if(Result.Contents)
+            {
+                result = 0;
+            }
+            if(result == 0)
+            {
+                ssize_t BytesRead;
+                BytesRead = read(FileDescriptor, Result.Contents, FileSize32);
+                if(BytesRead == FileSize32)
+                {
+                    Result.ContentsSize = FileSize32;
+                }
+                else
+                {
+                    DEBUGPlatformFreeFileMemory(Result.Contents);
+                    Result.Contents = 0;
+                }
+            }
+            else
+            {
+                NSLog(@"DEBUGPlatformReadEntireFile %s: vm_allocate error: %d: %s\n", Filename, errno, strerror(errno));
+            }
+        }
+        else
+        {
+            NSLog(@"DEBUGPlatformReadEntireFile %s: fstat error: %d: %s\n", Filename, errno, strerror(errno));
+        }
+        
+        close(FileDescriptor);
+    }
+    else
+    {
+        NSLog(@"DEBUGPlatformReadEntireFile %s: open error: %d: %s\n", Filename, errno, strerror(errno));
+    }
+    
+    return Result;
+}
+
+internal void
+DEBUGPlatformFreeFileMemory(void *Memory)
+{
+    if(Memory)
+    {
+        free(Memory);
+    }
+}
+
+internal b32
+DEBUGPlatformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory)
+{
+    b32 Result = false;
+    i32 FileDescriptor = open(Filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if(FileDescriptor != -1)
+    {
+        ssize_t BytesWritten = write(FileDescriptor, Memory, MemorySize);
+        Result = (BytesWritten == MemorySize);
+        if(!Result)
+        {
+            
+        }
+        
+        close(FileDescriptor);
+    }
+    else
+    {
+        
+    }
+    
+    
+    return Result;
+}
 
 struct macOS_sound_output
 {

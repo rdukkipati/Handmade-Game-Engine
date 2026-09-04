@@ -50,7 +50,7 @@ GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffe
     
     if(!Memory->IsInitialized)
     {
-        char *Filename = __FILE__;
+        const char *Filename = __FILE__;
         debug_read_file_result File = DEBUGPlatformReadEntireFile(Filename);
         if(File.Contents)
         {

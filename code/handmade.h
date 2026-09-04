@@ -17,7 +17,7 @@ inline u32
 SafeTruncate_u64(u64 Value)
 {
     Assert(Value <= 0xFFFFFFFF);
-    u32 Result = (u32)Value);
+    u32 Result = (u32)Value;
     return Result;
 }
 
@@ -29,9 +29,9 @@ struct debug_read_file_result
     void *Contents;
 };
 
-internal debug_read_file_result DEBUGPlatformReadEntireFile(char *Filename);
+internal debug_read_file_result DEBUGPlatformReadEntireFile(const char *Filename);
 internal void DEBUGPlatformFreeFileMemory(void *Memory);
-internal b32 DEBUGPlatformWriteEntireFile(char *Filename, u32 MemorySize, void *Memory);
+internal b32 DEBUGPlatformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory);
 
 #endif
 
