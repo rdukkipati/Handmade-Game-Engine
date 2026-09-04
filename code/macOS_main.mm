@@ -776,8 +776,6 @@ main()
             StartCounter = EndCounter;
         }
         
-        AudioOutputUnitStop(OutputUnit);
-        
         NSLog(@"Handmade Game finished running\n");
     }
 }

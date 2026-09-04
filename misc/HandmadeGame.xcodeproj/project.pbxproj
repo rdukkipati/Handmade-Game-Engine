@@ -7,33 +7,37 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		A0AA9A25304A0EA10086975C /* handmade.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = handmade.cpp; sourceTree = "<group>"; };
-		A0DC6A9C3006087900390534 /* build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
-		A0DC6A9D3006087900390534 /* macOS_main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = macOS_main.mm; sourceTree = "<group>"; };
-		A0DC6A9E3006087900390534 /* run.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = run.sh; sourceTree = "<group>"; };
-		A0DC6A9F3006087900390534 /* shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = shaders.metal; sourceTree = "<group>"; };
+		A049E195304B56C3007584BC /* build.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
+		A049E196304B56C3007584BC /* handmade.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = handmade.h; sourceTree = "<group>"; };
+		A049E197304B56C3007584BC /* handmade.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = handmade.cpp; sourceTree = "<group>"; };
+		A049E198304B56C3007584BC /* macOS_keyboard.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = macOS_keyboard.h; sourceTree = "<group>"; };
+		A049E199304B56C3007584BC /* macOS_main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = macOS_main.mm; sourceTree = "<group>"; };
+		A049E19A304B56C3007584BC /* run.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = run.sh; sourceTree = "<group>"; };
+		A049E19B304B56C3007584BC /* shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = shaders.metal; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		A049E19C304B56C3007584BC /* code */ = {
+			isa = PBXGroup;
+			children = (
+				A049E195304B56C3007584BC /* build.sh */,
+				A049E196304B56C3007584BC /* handmade.h */,
+				A049E197304B56C3007584BC /* handmade.cpp */,
+				A049E198304B56C3007584BC /* macOS_keyboard.h */,
+				A049E199304B56C3007584BC /* macOS_main.mm */,
+				A049E19A304B56C3007584BC /* run.sh */,
+				A049E19B304B56C3007584BC /* shaders.metal */,
+			);
+			name = code;
+			path = ../code;
+			sourceTree = SOURCE_ROOT;
+		};
 		A0DC6A95300606A700390534 = {
 			isa = PBXGroup;
 			children = (
-				A0DC6AA03006087900390534 /* code */,
+				A049E19C304B56C3007584BC /* code */,
 			);
 			sourceTree = "<group>";
-		};
-		A0DC6AA03006087900390534 /* code */ = {
-			isa = PBXGroup;
-			children = (
-				A0DC6A9C3006087900390534 /* build.sh */,
-				A0DC6A9D3006087900390534 /* macOS_main.mm */,
-				A0AA9A25304A0EA10086975C /* handmade.cpp */,
-				A0DC6A9E3006087900390534 /* run.sh */,
-				A0DC6A9F3006087900390534 /* shaders.metal */,
-			);
-			name = code;
-			path = "/Users/raghav/C++/HandmadeGame/game/code";
-			sourceTree = "<absolute>";
 		};
 /* End PBXGroup section */
 
