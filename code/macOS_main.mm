@@ -79,7 +79,7 @@ DEBUGPlatformReadEntireFile(const char *Filename)
         struct stat FileStat;
         if(fstat(FileDescriptor, &FileStat) == 0)
         {
-            u32 FileSize32 = FileStat.st_size;
+            u32 FileSize32 = (u32)FileStat.st_size;
             i32 result = -1;
             
             Result.Contents = (char *)malloc(FileSize32);
@@ -222,14 +222,14 @@ ProcessButton(GCControllerButtonInput *Button, game_button_state *OldState, game
     NSRect WindowRect  = [Window frame];
     NSRect ContentRect = [Window contentRectForFrameRect:WindowRect];
     
-    f32    WindowMinusContentWidth  = (WindowRect.size.width -
-                                       ContentRect.size.width);
-    f32    WindowMinusContentHeight = (WindowRect.size.height -
-                                       ContentRect.size.height);
+    CGFloat WindowMinusContentWidth  = (WindowRect.size.width -
+                                        ContentRect.size.width);
+    CGFloat WindowMinusContentHeight = (WindowRect.size.height -
+                                        ContentRect.size.height);
     
-    f32    NewContentHeight = (10.0f *
-                               (FrameSize.width - WindowMinusContentWidth)) /
-        16.0f;
+    CGFloat NewContentHeight = (10.0 *
+                                (FrameSize.width - WindowMinusContentWidth)) /
+        16.0;
     
     FrameSize.height        = NewContentHeight + WindowMinusContentHeight;
     
@@ -303,7 +303,7 @@ BuildFullPath(exe_state *State, char *Filename, size_t FilenameSize,
 {
     char *ExecutablePath      = State->ExecutablePath;
     char *ExecutableDirectory = State->ExecutableDirectory;
-    i32   DirectoryLength     = ExecutableDirectory - ExecutablePath;
+    i32   DirectoryLength     = (i32)(ExecutableDirectory - ExecutablePath);
     for(i32 Index = 0; Index < DirectoryLength; ++Index)
     {
         *FullPath++ = *ExecutablePath++;
@@ -332,7 +332,7 @@ main()
         
         game_memory GameMemory = {};
         GameMemory.PermanentStorageSize = Megabytes(64);
-        GameMemory.TransientStorageSize = Gigabytes(4);
+        GameMemory.TransientStorageSize = Gigabytes(1);
         
         u64 TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
         
@@ -360,7 +360,7 @@ main()
         
         
         // Allocate macOS_Sound
-        Result = vm_allocate(mach_task_self(), (vm_address_t *)&macOS_Sound.RingBuffer, RingBufferSizeInBytes, VM_FLAGS_ANYWHERE);
+        Result = vm_allocate(mach_task_self(), (vm_address_t *)&macOS_Sound.RingBuffer, (vm_size_t)RingBufferSizeInBytes, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
         {
@@ -369,7 +369,7 @@ main()
         }
         
         // Allocate GameSound
-        Result = vm_allocate(mach_task_self(), (vm_address_t *)&GameSound.Memory, GameSoundSizeInBytes, VM_FLAGS_ANYWHERE);
+        Result = vm_allocate(mach_task_self(), (vm_address_t *)&GameSound.Memory, (vm_size_t)GameSoundSizeInBytes, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
         {
@@ -598,7 +598,7 @@ main()
             kAudioFormatFlagIsPacked;
         StreamFormat.mBytesPerPacket    = 4;
         StreamFormat.mFramesPerPacket   = 1;
-        StreamFormat.mBytesPerFrame     = BytesPerSampleFrame;
+        StreamFormat.mBytesPerFrame     = (u32)BytesPerSampleFrame;
         StreamFormat.mChannelsPerFrame  = 2;
         StreamFormat.mBitsPerChannel    = 16;
         
@@ -693,7 +693,7 @@ main()
                                 }
                             }
                             
-                            OldKeyboardState[KeyCode] = IsDown;
+                            OldKeyboardState[KeyCode] = (u8)IsDown;
                             
                         }
                         break;
@@ -779,9 +779,9 @@ main()
                     return 1;
                 }
                 
-                GameBitmap.Width = TextureWidth;
-                GameBitmap.Height = TextureHeight;
-                GameBitmap.Pitch = BitmapPitch;
+                GameBitmap.Width = (i32)TextureWidth;
+                GameBitmap.Height = (i32)TextureHeight;
+                GameBitmap.Pitch = (i32)BitmapPitch;
                 
                 GameUpdateAndRender(&GameMemory, NewInput, &GameBitmap, &GameSound);
                 
