@@ -12,16 +12,9 @@
 #include <mach/mach.h>
 #include <mach/mach_error.h>
 
-#include <stdint.h>
-
-// TODO: Implement sine ourselves
-#include <math.h>
+#include <unistd.h>
 
 #include "macOS_keyboard.h"
-
-#define internal        static
-#define local_persist   static
-#define global_variable static
 
 // vm_allocate
 // Getting screen size
@@ -31,26 +24,12 @@
 
 #include <sys/stat.h>
 
-typedef int8_t   i8;
-typedef int16_t  i16;
-typedef int32_t  i32;
-typedef int64_t  i64;
-typedef i32      b32;
+#include <copyfile.h>
+#include <dlfcn.h>
 
-typedef uint8_t  u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
+#include "handmade.h"
 
-typedef float    f32;
-typedef double   f64;
-
-#define PI   3.14159265359f
-#define PI_2 6.28318530718f
-
-#include "handmade.cpp"
-
-global_variable b32   GLOBAL_RUNNING          = true;
+global_variable b32 GLOBAL_RUNNING            = true;
 
 global_variable id<MTLTexture>        Texture = nil;
 global_variable MTLTextureDescriptor *TextureDescriptor;
@@ -63,24 +42,26 @@ global_variable NSUInteger    BitmapPitch;
 global_variable u8            OldKeyboardState[128] = {};
 
 global_variable i32           SampleFramesPerSecond = 48000;
-global_variable i32           BytesPerSampleFrame = sizeof(i16) * 2;
+global_variable i32           BytesPerSampleFrame   = sizeof(i16) * 2;
 
-global_variable i32 Latency = 3200;
-global_variable i32 GameSoundSizeInBytes = Latency * BytesPerSampleFrame;
-global_variable i32 RingBufferSizeInBytes = SampleFramesPerSecond * BytesPerSampleFrame * 2;
+global_variable i32           Latency               = 3200;
+global_variable i32 GameSoundSizeInBytes  = Latency * BytesPerSampleFrame;
+global_variable i32 RingBufferSizeInBytes = SampleFramesPerSecond *
+BytesPerSampleFrame * 2;
 
-internal debug_read_file_result
-DEBUGPlatformReadEntireFile(const char *Filename)
+global_variable u32 MAXFRAMES             = 0;
+
+DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
 {
-    debug_read_file_result Result = {};
-    i32 FileDescriptor = open(Filename, O_RDONLY);
+    debug_read_file_result Result         = {};
+    i32                    FileDescriptor = open(Filename, O_RDONLY);
     if(FileDescriptor != -1)
     {
         struct stat FileStat;
         if(fstat(FileDescriptor, &FileStat) == 0)
         {
-            u32 FileSize32 = (u32)FileStat.st_size;
-            i32 result = -1;
+            u32 FileSize32  = (u32)FileStat.st_size;
+            i32 result      = -1;
             
             Result.Contents = (char *)malloc(FileSize32);
             if(Result.Contents)
@@ -103,26 +84,29 @@ DEBUGPlatformReadEntireFile(const char *Filename)
             }
             else
             {
-                NSLog(@"DEBUGPlatformReadEntireFile %s: vm_allocate error: %d: %s\n", Filename, errno, strerror(errno));
+                NSLog(@"DEBUGPlatformReadEntireFile %s: vm_allocate error: %d: "
+                      @"%s\n",
+                      Filename, errno, strerror(errno));
             }
         }
         else
         {
-            NSLog(@"DEBUGPlatformReadEntireFile %s: fstat error: %d: %s\n", Filename, errno, strerror(errno));
+            NSLog(@"DEBUGPlatformReadEntireFile %s: fstat error: %d: %s\n",
+                  Filename, errno, strerror(errno));
         }
         
         close(FileDescriptor);
     }
     else
     {
-        NSLog(@"DEBUGPlatformReadEntireFile %s: open error: %d: %s\n", Filename, errno, strerror(errno));
+        NSLog(@"DEBUGPlatformReadEntireFile %s: open error: %d: %s\n", Filename,
+              errno, strerror(errno));
     }
     
     return Result;
 }
 
-internal void
-DEBUGPlatformFreeFileMemory(void *Memory)
+DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
 {
     if(Memory)
     {
@@ -130,27 +114,23 @@ DEBUGPlatformFreeFileMemory(void *Memory)
     }
 }
 
-internal b32
-DEBUGPlatformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory)
+DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)
 {
-    b32 Result = false;
+    b32 Result         = false;
     i32 FileDescriptor = open(Filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if(FileDescriptor != -1)
     {
         ssize_t BytesWritten = write(FileDescriptor, Memory, MemorySize);
-        Result = (BytesWritten == MemorySize);
+        Result               = (BytesWritten == MemorySize);
         if(!Result)
         {
-            
         }
         
         close(FileDescriptor);
     }
     else
     {
-        
     }
-    
     
     return Result;
 }
@@ -158,9 +138,9 @@ DEBUGPlatformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory)
 struct macOS_sound_output
 {
     i32 *RingBuffer;
-    i32 SizeInSampleFrames;
-    i32 ReadIndex;
-    i32 WriteIndex;
+    i32  SizeInSampleFrames;
+    i32  ReadIndex;
+    i32  WriteIndex;
 };
 
 OSStatus
@@ -173,16 +153,21 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     (void)InTimeStamp;
     (void)InBusNumber;
     
-    macOS_sound_output *macOS_Sound = (macOS_sound_output *)InRefCon;
-    i32 WriteIndex = macOS_Sound->WriteIndex;
+    if(InNumberFrames > MAXFRAMES)
+    {
+        MAXFRAMES = InNumberFrames;
+    }
     
+    macOS_sound_output *macOS_Sound  = (macOS_sound_output *)InRefCon;
+    i32                 WriteIndex   = macOS_Sound->WriteIndex;
     
-    i16 *OutputBuffer = (i16 *)IOData->mBuffers[0].mData;
+    i16                *OutputBuffer = (i16 *)IOData->mBuffers[0].mData;
     
-    UInt32 SampleFrame = 0;
+    UInt32              SampleFrame  = 0;
     while(macOS_Sound->ReadIndex != WriteIndex && SampleFrame < InNumberFrames)
     {
-        i16 *RingSample = (i16 *)&macOS_Sound->RingBuffer[macOS_Sound->ReadIndex++];
+        i16 *RingSample =
+            (i16 *)&macOS_Sound->RingBuffer[macOS_Sound->ReadIndex++];
         *OutputBuffer++ = *RingSample++;
         *OutputBuffer++ = *RingSample;
         if(macOS_Sound->ReadIndex >= macOS_Sound->SizeInSampleFrames)
@@ -201,15 +186,6 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     return noErr;
 }
 
-internal void
-ProcessButton(GCControllerButtonInput *Button, game_button_state *OldState, game_button_state *NewState)
-{
-    
-    NewState->EndedDown = [Button isPressed];
-    NewState->HalfTransitionCount = (OldState->EndedDown != NewState->EndedDown) ? 1 : 0;
-    
-}
-
 @interface HandmadeApplicationDelegate
 : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @end
@@ -219,8 +195,8 @@ ProcessButton(GCControllerButtonInput *Button, game_button_state *OldState, game
 - (NSSize)windowWillResize:(NSWindow *)Window toSize:(NSSize)FrameSize
 {
     
-    NSRect WindowRect  = [Window frame];
-    NSRect ContentRect = [Window contentRectForFrameRect:WindowRect];
+    NSRect  WindowRect  = [Window frame];
+    NSRect  ContentRect = [Window contentRectForFrameRect:WindowRect];
     
     CGFloat WindowMinusContentWidth  = (WindowRect.size.width -
                                         ContentRect.size.width);
@@ -231,7 +207,7 @@ ProcessButton(GCControllerButtonInput *Button, game_button_state *OldState, game
                                 (FrameSize.width - WindowMinusContentWidth)) /
         16.0;
     
-    FrameSize.height        = NewContentHeight + WindowMinusContentHeight;
+    FrameSize.height         = NewContentHeight + WindowMinusContentHeight;
     
     return FrameSize;
 }
@@ -315,72 +291,177 @@ BuildFullPath(exe_state *State, char *Filename, size_t FilenameSize,
     *FullPath = 0;
 }
 
+struct macOS_game_code
+{
+    void *GameCodeDLL;
+    
+    game_update_and_render *UpdateAndRender;
+    game_get_sound_samples *GetSoundSamples;
+    
+    b32 IsValid;
+};
+
+internal void
+macOS_LoadGameCode(macOS_game_code *GameCode, char *GameFullPath, char *CopyFullPath)
+{
+    
+    copyfile(GameFullPath, CopyFullPath, NULL, 0);
+    
+    GameCode->GameCodeDLL = dlopen(CopyFullPath, RTLD_NOW);
+    if(GameCode->GameCodeDLL)
+    {
+        
+        GameCode->UpdateAndRender = (game_update_and_render *)dlsym(GameCode->GameCodeDLL, "GameUpdateAndRender");
+        
+        GameCode->GetSoundSamples = (game_get_sound_samples *)dlsym(GameCode->GameCodeDLL, "GameGetSoundSamples");
+        
+        GameCode->IsValid = (GameCode->UpdateAndRender && GameCode->GetSoundSamples);
+    }
+    
+    if(!GameCode->IsValid)
+    {
+        
+        GameCode->UpdateAndRender = GameUpdateAndRenderStub;
+        GameCode->GetSoundSamples = GameGetSoundSamplesStub;
+    }
+    
+    
+}
+
+internal void
+macOS_UnloadGameCode(macOS_game_code *GameCode)
+{
+    
+    if(GameCode->GameCodeDLL)
+    {
+        
+        dlclose(GameCode->GameCodeDLL);
+        GameCode->GameCodeDLL = 0;
+    }
+    
+    GameCode->IsValid = false;
+    GameCode->UpdateAndRender = GameUpdateAndRenderStub;
+    GameCode->GetSoundSamples = GameGetSoundSamplesStub;
+}
+
+
+internal void
+ProcessKeyboardMessage(game_button_state *ButtonState, b32 IsDown)
+{
+    
+    Assert(ButtonState->EndedDown != IsDown);
+    ButtonState->EndedDown = IsDown;
+    ++ButtonState->HalfTransitionCount;
+}
+
+internal void
+ProcessButton(b32 Pressed, game_button_state *ButtonState)
+{
+    
+    ButtonState->HalfTransitionCount = (ButtonState->EndedDown != Pressed) ? 1
+        : 0;
+    ButtonState->EndedDown           = Pressed;
+}
+
+inline f64
+GetMillisecondsElapsed(u64 EndCounter, u64 StartCounter,
+                       mach_timebase_info_data_t Timebase)
+{
+    u64 Elapsed      = EndCounter - StartCounter;
+    u64 NanoSeconds  = Elapsed * Timebase.numer / Timebase.denom;
+    f64 Milliseconds = NanoSeconds / 1e6;
+    return Milliseconds;
+}
+
 i32
 main()
 {
+    
+    exe_state State;
+    GetExecutablePath(&State);
+    
+    char GameFilename[] = "handmade.dylib";
+    char CopyFilename[] = "handmade_temp.dylib";
+    char GameFullPath[PATH_MAX];
+    char CopyFullPath[PATH_MAX];
+    BuildFullPath(State, GameFilename,
+                  sizeof(GameFilename), GameFullPath);
+    BuildFullPath(State, CopyFilename, sizeof(CopyFilename), CopyFullPath);
+    
+    
+    i32 MonitorRefreshHz           = 60;
+    i32 GameUpdateHz               = MonitorRefreshHz / 2;
+    f64 TargetMillisecondsPerFrame = 1000.0 / (f64)GameUpdateHz;
     
     @autoreleasepool
     {
         
 #if HANDMADE_INTERNAL
         vm_address_t BaseAddress = (vm_address_t)Terabytes(2);
-        int Flags = VM_FLAGS_FIXED;
+        int          Flags       = VM_FLAGS_FIXED;
 #else
         vm_address_t BaseAddress = 0;
-        int Flags = VM_FLAGS_ANYWHERE;
+        int          Flags       = VM_FLAGS_ANYWHERE;
 #endif
         
-        game_memory GameMemory = {};
+        game_memory GameMemory          = {};
         GameMemory.PermanentStorageSize = Megabytes(64);
         GameMemory.TransientStorageSize = Gigabytes(1);
         
-        u64 TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
+        u64           TotalSize         = GameMemory.PermanentStorageSize +
+            GameMemory.TransientStorageSize;
         
         kern_return_t Result;
         Result = vm_allocate(mach_task_self(), &BaseAddress, TotalSize, Flags);
         if(Result != KERN_SUCCESS)
         {
-            NSLog(@"vm_allocate for game memory failed: %s", mach_error_string(Result));
+            NSLog(@"vm_allocate for game memory failed: %s",
+                  mach_error_string(Result));
             return 1;
         }
         
         GameMemory.PermanentStorage = (void *)BaseAddress;
-        GameMemory.TransientStorage = ((u8 *)GameMemory.PermanentStorage + GameMemory.PermanentStorageSize);
+        GameMemory.TransientStorage = ((u8 *)GameMemory.PermanentStorage +
+                                       GameMemory.PermanentStorageSize);
         
         mach_timebase_info_data_t Timebase;
         mach_timebase_info(&Timebase);
         
-        macOS_sound_output macOS_Sound = {};
-        macOS_Sound.SizeInSampleFrames = SampleFramesPerSecond * 2;
+        macOS_sound_output macOS_Sound     = {};
+        macOS_Sound.SizeInSampleFrames     = SampleFramesPerSecond * 2;
         
         game_sound_output_buffer GameSound = {};
-        GameSound.SampleFramesPerSecond = SampleFramesPerSecond;
+        GameSound.SampleFramesPerSecond    = SampleFramesPerSecond;
         
-        game_offscreen_buffer GameBitmap = {};
-        
+        game_offscreen_buffer GameBitmap   = {};
         
         // Allocate macOS_Sound
-        Result = vm_allocate(mach_task_self(), (vm_address_t *)&macOS_Sound.RingBuffer, (vm_size_t)RingBufferSizeInBytes, VM_FLAGS_ANYWHERE);
+        Result                             = vm_allocate(
+                                                         mach_task_self(), (vm_address_t *)&macOS_Sound.RingBuffer,
+                                                         (vm_size_t)RingBufferSizeInBytes, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
         {
-            NSLog(@"vm_allocate for macOS_Sound failed: %s", mach_error_string(Result));
+            NSLog(@"vm_allocate for macOS_Sound failed: %s",
+                  mach_error_string(Result));
             return 1;
         }
         
         // Allocate GameSound
-        Result = vm_allocate(mach_task_self(), (vm_address_t *)&GameSound.Memory, (vm_size_t)GameSoundSizeInBytes, VM_FLAGS_ANYWHERE);
+        Result = vm_allocate(
+                             mach_task_self(), (vm_address_t *)&GameSound.Memory,
+                             (vm_size_t)GameSoundSizeInBytes, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
         {
-            NSLog(@"vm_allocate for RingBuffer failed: %s", mach_error_string(Result));
+            NSLog(@"vm_allocate for RingBuffer failed: %s",
+                  mach_error_string(Result));
             return 1;
-            
         }
         
         // Allocate GameBitmap
-        Result = vm_allocate(
-                             mach_task_self(), (vm_address_t *)&GameBitmap.Memory,
+        Result = vm_allocate(mach_task_self(),
+                             (vm_address_t *)&GameBitmap.Memory,
                              3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
@@ -389,7 +470,6 @@ main()
                   mach_error_string(Result));
             return 1;
         }
-        
         
         NSString      *ApplicationName = @"Handmade Game";
         NSUInteger     WindowWidth     = 960;
@@ -437,8 +517,6 @@ main()
         [Window setTitle:ApplicationName];
         [Window makeKeyAndOrderFront:nil];
         
-        exe_state State;
-        GetExecutablePath(&State);
         char MetalLibraryFilename[] = "shaders.metallib";
         char MetalLibraryFullPath[PATH_MAX];
         BuildFullPath(&State, MetalLibraryFilename,
@@ -624,9 +702,13 @@ main()
             return 1;
         }
         
-        game_input Input[2] = {};
-        game_input *NewInput = &Input[0];
-        game_input *OldInput = &Input[1];
+        // game_input Input[2] = {};
+        // game_input *NewInput = &Input[0];
+        // game_input *OldInput = &Input[1];
+        
+        game_input             Input              = {};
+        game_controller_input *KeyboardController = GetController(&Input, 0);
+        KeyboardController->IsConnected           = true;
         
         Error = AudioUnitInitialize(OutputUnit);
         Error = AudioOutputUnitStart(OutputUnit);
@@ -637,6 +719,15 @@ main()
         
         while(GLOBAL_RUNNING)
         {
+            
+            for(i32 ButtonIndex = 0;
+                ButtonIndex < ArrayCount(KeyboardController->Buttons);
+                ++ButtonIndex)
+            {
+                KeyboardController->Buttons[ButtonIndex].HalfTransitionCount =
+                    0;
+            }
+            
             @autoreleasepool
             {
                 
@@ -676,35 +767,125 @@ main()
                             {
                                 switch(KeyCode)
                                 {
+                                    
+                                    case kVK_ANSI_W:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->MoveUp,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_ANSI_A:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->MoveLeft,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_ANSI_S:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->MoveDown,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_ANSI_D:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->MoveRight,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_ANSI_Q:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->LeftShoulder,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_ANSI_E:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->RightShoulder,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_UpArrow:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->ActionUp,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_LeftArrow:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->ActionLeft,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_DownArrow:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->ActionDown,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_RightArrow:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->ActionRight,
+                                                               IsDown);
+                                    }
+                                    break;
+                                    
                                     case kVK_Escape:
                                     {
-                                        NSLog(@"ESCAPE: ");
-                                        if(IsDown)
-                                        {
-                                            NSLog(@"IsDown");
-                                        }
-                                        if(WasDown)
-                                        {
-                                            NSLog(@"WasDown");
-                                        }
-                                        NSLog(@"\n");
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->Start, IsDown);
+                                    }
+                                    break;
+                                    
+                                    case kVK_Space:
+                                    {
+                                        
+                                        ProcessKeyboardMessage(
+                                                               &KeyboardController->Back, IsDown);
                                     }
                                     break;
                                 }
                             }
                             
                             OldKeyboardState[KeyCode] = (u8)IsDown;
-                            
                         }
                         break;
                         
                         default:
                         {
-                            [NSApp sendEvent:Event];
                             
+                            [NSApp sendEvent:Event];
                         }
                         break;
-                        
                     }
                     
                 } while(Event != nil);
@@ -712,33 +893,86 @@ main()
                 NSArray<GCController *> *Controllers =
                     [GCController controllers];
                 
-                i32 ControllerIndex = 0;
+                i32 ControllerIndex = 1;
                 for(GCController *Controller in Controllers)
                 {
                     
-                    if(ControllerIndex >= 4)
+                    if(ControllerIndex >= 5)
                     {
                         break;
                     }
                     
-                    game_controller_input *OldController = &OldInput->Controllers[ControllerIndex];
-                    game_controller_input *NewController = &NewInput->Controllers[ControllerIndex];
+                    game_controller_input *GameController =
+                        &Input.Controllers[ControllerIndex];
                     
                     GCExtendedGamepad *Gamepad = [Controller extendedGamepad];
                     if(Gamepad)
                     {
                         
-                        NewController->IsAnalog = true;
-                        NewController->StartX = OldController->EndX;
-                        NewController->StartY = OldController->EndY;
+                        GameController->IsConnected = true;
                         
-                        f32 LeftStick_X  = [[[Gamepad leftThumbstick] xAxis]
-                                            value];
-                        f32 LeftStick_Y  = [[[Gamepad leftThumbstick] yAxis]
-                                            value];
+                        GameController->StickAverageX =
+                            [[[Gamepad leftThumbstick] xAxis] value];
+                        GameController->StickAverageY =
+                            [[[Gamepad leftThumbstick] yAxis] value];
                         
-                        NewController->MinX = NewController->MaxX = NewController->EndX = LeftStick_X;
-                        NewController->MinY = NewController->MaxY = NewController->EndY = LeftStick_Y;
+                        if((GameController->StickAverageX != 0.0f) ||
+                           (GameController->StickAverageY != 0.0f))
+                        {
+                            
+                            GameController->IsAnalog = true;
+                        }
+                        else
+                        {
+                            
+                            GameController->IsAnalog = false;
+                        }
+                        
+                        GCControllerDirectionPad *DPad = [Gamepad dpad];
+                        
+                        if([[DPad up] isPressed])
+                        {
+                            GameController->StickAverageY = 1.0f;
+                            GameController->IsAnalog      = false;
+                        }
+                        
+                        if([[DPad down] isPressed])
+                        {
+                            GameController->StickAverageY = -1.0f;
+                            GameController->IsAnalog      = false;
+                        }
+                        
+                        if([[DPad left] isPressed])
+                        {
+                            GameController->StickAverageX = -1.0f;
+                            GameController->IsAnalog      = false;
+                        }
+                        
+                        if([[DPad right] isPressed])
+                        {
+                            GameController->StickAverageX = 1.0f;
+                            GameController->IsAnalog      = false;
+                        }
+                        
+                        f32 Threshold = 0.5f;
+                        
+                        ProcessButton(
+                                      (GameController->StickAverageX < -Threshold) ? 1
+                                      : 0,
+                                      &GameController->MoveLeft);
+                        
+                        ProcessButton(
+                                      (GameController->StickAverageX > Threshold) ? 1 : 0,
+                                      &GameController->MoveRight);
+                        
+                        ProcessButton(
+                                      (GameController->StickAverageY < -Threshold) ? 1
+                                      : 0,
+                                      &GameController->MoveDown);
+                        
+                        ProcessButton(
+                                      (GameController->StickAverageY > Threshold) ? 1 : 0,
+                                      &GameController->MoveUp);
                         
                         /*
                         f32  RightStick_X  = [[[Gamepad rightThumbstick]
@@ -746,21 +980,49 @@ main()
                         rightThumbstick] yAxis] value];
 */
                         
-                        ProcessButton([Gamepad buttonA], &OldController->Down, &NewController->Down);
-                        ProcessButton([Gamepad buttonB], &OldController->Right, &NewController->Right);
-                        ProcessButton([Gamepad buttonX], &OldController->Left, &NewController->Left);
-                        ProcessButton([Gamepad buttonY], &OldController->Up,
-                                      &NewController->Up);
-                        ProcessButton([Gamepad leftShoulder], &OldController->LeftShoulder, &NewController->LeftShoulder);
-                        ProcessButton([Gamepad rightShoulder], &OldController->RightShoulder, &NewController->RightShoulder);
+                        ProcessButton([[Gamepad buttonA] isPressed],
+                                      &GameController->ActionDown);
                         
+                        ProcessButton([[Gamepad buttonB] isPressed],
+                                      &GameController->ActionRight);
                         
+                        ProcessButton([[Gamepad buttonX] isPressed],
+                                      &GameController->ActionLeft);
+                        
+                        ProcessButton([[Gamepad buttonY] isPressed],
+                                      &GameController->ActionUp);
+                        
+                        ProcessButton([[Gamepad leftShoulder] isPressed],
+                                      &GameController->LeftShoulder);
+                        
+                        ProcessButton([[Gamepad rightShoulder] isPressed],
+                                      &GameController->RightShoulder);
+                        
+                        ProcessButton([[Gamepad buttonMenu] isPressed],
+                                      &GameController->Start);
+                        
+                        ProcessButton([[Gamepad buttonOptions] isPressed],
+                                      &GameController->Back);
                     }
+                    else
+                    {
+                        
+                        GameController->IsConnected = false;
+                    }
+                    
+                    ++ControllerIndex;
+                }
+                
+                while(ControllerIndex < 5)
+                {
+                    
+                    Input.Controllers[ControllerIndex].IsConnected = false;
+                    ++ControllerIndex;
                 }
                 
                 // ReadWriteDiff is in SampleFrames
                 i32 ReadWriteDiff = 0;
-                i32 ReadIndex = macOS_Sound.ReadIndex;
+                i32 ReadIndex     = macOS_Sound.ReadIndex;
                 
                 if(macOS_Sound.WriteIndex >= ReadIndex)
                 {
@@ -769,37 +1031,36 @@ main()
                 
                 else
                 {
-                    ReadWriteDiff = (macOS_Sound.SizeInSampleFrames - ReadIndex) + (macOS_Sound.WriteIndex); 
+                    ReadWriteDiff = (macOS_Sound.SizeInSampleFrames -
+                                     ReadIndex) +
+                        (macOS_Sound.WriteIndex);
                 }
                 
                 GameSound.SampleFramesToWrite = Latency - ReadWriteDiff;
-                if(GameSound.SampleFramesToWrite < 0)
-                {
-                    NSLog(@"WREEEEE");
-                    return 1;
-                }
+                Assert(GameSound.SampleFramesToWrite >= 0);
                 
-                GameBitmap.Width = (i32)TextureWidth;
+                GameBitmap.Width  = (i32)TextureWidth;
                 GameBitmap.Height = (i32)TextureHeight;
-                GameBitmap.Pitch = (i32)BitmapPitch;
+                GameBitmap.Pitch  = (i32)BitmapPitch;
                 
-                GameUpdateAndRender(&GameMemory, NewInput, &GameBitmap, &GameSound);
+                GameUpdateAndRender(&GameMemory, &Input, &GameBitmap,
+                                    &GameSound);
                 
-                //Copy game sound into ring buffer
+                // Copy game sound into ring buffer
                 i16 *Memory = GameSound.Memory;
                 
-                for(int Sample = 0; Sample < GameSound.SampleFramesToWrite; ++Sample)
+                for(int Sample = 0; Sample < GameSound.SampleFramesToWrite;
+                    ++Sample)
                 {
-                    i16 *RingSample = (i16 *)&macOS_Sound.RingBuffer[macOS_Sound.WriteIndex++];
-                    *RingSample++ = *Memory++;
-                    *RingSample = *Memory++;
+                    i16 *RingSample = (i16 *)&macOS_Sound
+                        .RingBuffer[macOS_Sound.WriteIndex++];
+                    *RingSample++   = *Memory++;
+                    *RingSample     = *Memory++;
                     if(macOS_Sound.WriteIndex >= macOS_Sound.SizeInSampleFrames)
                     {
                         macOS_Sound.WriteIndex = 0;
                     }
-                    
                 }
-                
                 
                 [Texture replaceRegion:MTLRegionMake2D(0, 0, TextureWidth,
                                                        TextureHeight)
@@ -846,22 +1107,45 @@ main()
                 [CommandBuffer presentDrawable:Drawable];
                 [CommandBuffer commit];
                 [CommandBuffer waitUntilCompleted];
-                
             }
             
-            game_input *Temp = NewInput;
-            NewInput = OldInput;
-            OldInput = Temp;
+            u64 EndCounter          = mach_absolute_time();
+            f64 MillisecondsElapsed = GetMillisecondsElapsed(
+                                                             EndCounter, StartCounter, Timebase);
             
-            u64 EndCounter  = mach_absolute_time();
-            u64 Elapsed     = EndCounter - StartCounter;
-            u64 NanoSeconds = Elapsed * Timebase.numer / Timebase.denom;
-            f64 Milliseconds     = NanoSeconds / 1e6;
+            if(MillisecondsElapsed < TargetMillisecondsPerFrame)
+            {
+                f64 SleepMS = TargetMillisecondsPerFrame - MillisecondsElapsed;
+                if(SleepMS > 2.0)
+                {
+                    u64 SleepUS = (u64)((SleepMS - 2.0) * 1000.0);
+                    usleep((useconds_t)(SleepUS));
+                }
+                
+                f64 TestMillisecondsElapsedForFrame = GetMillisecondsElapsed(
+                                                                             mach_absolute_time(), StartCounter, Timebase);
+                Assert(TestMillisecondsElapsedForFrame <
+                       TargetMillisecondsPerFrame);
+                
+                while(TestMillisecondsElapsedForFrame <
+                      TargetMillisecondsPerFrame)
+                {
+                    TestMillisecondsElapsedForFrame = GetMillisecondsElapsed(
+                                                                             mach_absolute_time(), StartCounter, Timebase);
+                }
+            }
+            else
+            {
+                // TODO: Missed frame rate
+            }
+            
+            EndCounter       = mach_absolute_time();
+            f64 Milliseconds = GetMillisecondsElapsed(EndCounter, StartCounter,
+                                                      Timebase);
+            StartCounter     = EndCounter;
             NSLog(@"%.3f seconds\n", Milliseconds);
-            
-            StartCounter = EndCounter;
         }
-        
+        NSLog(@"MAXFRAMES %d\n", MAXFRAMES);
         NSLog(@"Handmade Game finished running\n");
     }
 }

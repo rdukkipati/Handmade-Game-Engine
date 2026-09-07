@@ -2,16 +2,47 @@
 
 #ifndef HANDMADE_H
 
+// TODO: Implement sine ourselves
+#include <math.h>
+#include <stdint.h>
+
+#define internal        static
+#define local_persist   static
+#define global_variable static
+
+typedef int8_t   i8;
+typedef int16_t  i16;
+typedef int32_t  i32;
+typedef int64_t  i64;
+typedef i32      b32;
+
+typedef uint8_t  u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+
+typedef float    f32;
+typedef double   f64;
+
+#define PI   3.14159265359f
+#define PI_2 6.28318530718f
+
 #if HANDMADE_SLOW
-#define Assert(Expression) if(!(Expression)) { __builtin_trap();}
+#define Assert(Expression)                                                     \
+if(!(Expression))                                                          \
+{                                                                          \
+__builtin_trap();                                                      \
+}
 #else
 #define Assert(Expression)
 #endif
 
-#define Kilobytes(Value) ((u64)(Value)*1024)
-#define Megabytes(Value) (Kilobytes(Value)*1024)
-#define Gigabytes(Value) (Megabytes(Value)*1024)
-#define Terabytes(Value) (Gigabytes(Value)*1024)
+#define Kilobytes(Value)  ((u64)(Value) * 1024)
+#define Megabytes(Value)  (Kilobytes(Value) * 1024)
+#define Gigabytes(Value)  (Megabytes(Value) * 1024)
+#define Terabytes(Value)  (Gigabytes(Value) * 1024)
+
+#define ArrayCount(Array) ((i32)(sizeof(Array) / sizeof((Array)[0])))
 
 inline u32
 SafeTruncate_u64(u64 Value)
@@ -25,28 +56,35 @@ SafeTruncate_u64(u64 Value)
 
 struct debug_read_file_result
 {
-    u32 ContentsSize;
+    u32   ContentsSize;
     void *Contents;
 };
 
-internal debug_read_file_result DEBUGPlatformReadEntireFile(const char *Filename);
-internal void DEBUGPlatformFreeFileMemory(void *Memory);
-internal b32 DEBUGPlatformWriteEntireFile(const char *Filename, u32 MemorySize, void *Memory);
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(void *Memory)
+typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
+
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name)                                  \
+debug_read_file_result name(char *Filename)
+typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
+
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name)                                 \
+b32 name(char *Filename, u32 MemorySize, void *Memory)
+typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file);
 
 #endif
 
 struct game_offscreen_buffer
 {
     void *Memory;
-    i32 Width;
-    i32 Height;
-    i32 Pitch;
+    i32   Width;
+    i32   Height;
+    i32   Pitch;
 };
 
 struct game_sound_output_buffer
 {
-    i32 SampleFramesPerSecond;
-    i32 SampleFramesToWrite;
+    i32  SampleFramesPerSecond;
+    i32  SampleFramesToWrite;
     i16 *Memory;
 };
 
@@ -58,83 +96,90 @@ struct game_button_state
 
 struct game_controller_input
 {
+    b32 IsConnected;
     b32 IsAnalog;
-    
-    f32 StartX;
-    f32 StartY;
-    
-    f32 MinX;
-    f32 MinY;
-    
-    f32 MaxX;
-    f32 MaxY;
-    
-    f32 EndX;
-    f32 EndY;
+    f32 StickAverageX;
+    f32 StickAverageY;
     
     union
     {
-        game_button_state Buttons[6];
+        game_button_state Buttons[12];
         struct
         {
-            game_button_state Up;
-            game_button_state Down;
-            game_button_state Left;
-            game_button_state Right;
+            game_button_state MoveUp;
+            game_button_state MoveDown;
+            game_button_state MoveLeft;
+            game_button_state MoveRight;
+            
+            game_button_state ActionUp;
+            game_button_state ActionDown;
+            game_button_state ActionLeft;
+            game_button_state ActionRight;
+            
             game_button_state LeftShoulder;
             game_button_state RightShoulder;
+            
+            game_button_state Back;
+            game_button_state Start;
+            
+            // NOTE(casey): All buttons must be added above this line
+            
+            game_button_state Terminator;
         };
     };
 };
 
 struct game_input
 {
-    game_controller_input Controllers[4];
+    game_controller_input Controllers[5];
 };
+
+inline game_controller_input *
+GetController(game_input *Input, i32 ControllerIndex)
+{
+    Assert(ControllerIndex < ArrayCount(Input->Controllers));
+    game_controller_input *Result = &Input->Controllers[ControllerIndex];
+    return Result;
+}
 
 struct game_memory
 {
-    b32 IsInitialized;
+    b32                               IsInitialized;
     
-    u64 PermanentStorageSize;
-    void *PermanentStorage;
+    u64                               PermanentStorageSize;
+    void                             *PermanentStorage;
     
-    u64 TransientStorageSize;
-    void *TransientStorage;
+    u64                               TransientStorageSize;
+    void                             *TransientStorage;
+    
+    debug_platform_free_file_memory  *DEBUGPlatformFreeFileMemory;
+    debug_platform_read_entire_file  *DEBUGPlatformReadEntireFile;
+    debug_platform_write_entire_file *DEBUGPlatformWriteEntireFile;
 };
 
 struct game_state
 {
+    
     i32 ToneHz;
     i32 GreenOffset;
     i32 BlueOffset;
+    
+    f32 tSine;
 };
 
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory *Memory, game_input *Input, game_offscreen_buffer *Bitmap)
+typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
+GAME_UPDATE_AND_RENDER(GameUpdateAndRenderStub)
+{
+    
+}
 
-internal void GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffer *Bitmap, game_sound_output_buffer *Sound);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#define GAME_GET_SOUND_SAMPLES(name) void name(game_memory *Memory, game_sound_output_buffer *Sound)
+typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
+GAME_GET_SOUND_SAMPLES(GameGetSoundSamplesStub)
+{
+    
+}
 
 #define HANDMADE_H
 #endif

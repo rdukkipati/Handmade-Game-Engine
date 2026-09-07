@@ -1,30 +1,31 @@
 #include "handmade.h"
 
 internal void
-GameOutputSound(game_sound_output_buffer *Sound, i32 ToneHz)
+GameOutputSound(game_state *GameState, game_sound_output_buffer *Sound, i32 ToneHz)
 {
-    local_persist f32 Time = 0;
-    i16 ToneVolume = 3000;
-    i32 WavePeriod = Sound->SampleFramesPerSecond / ToneHz;
-    i16 *Memory = Sound->Memory;
+    i16               ToneVolume = 3000;
+    i32               WavePeriod = Sound->SampleFramesPerSecond / ToneHz;
+    i16              *Memory     = Sound->Memory;
     
-    for(i32 SampleFrame = 0; SampleFrame < Sound->SampleFramesToWrite; ++SampleFrame)
+    for(i32 SampleFrame = 0; SampleFrame < Sound->SampleFramesToWrite;
+        ++SampleFrame)
     {
-        f32 SineValue = sinf(Time);
-        i16 SampleValue = (i16)(SineValue * ToneVolume);
-        *Memory++ = SampleValue;
-        *Memory++ = SampleValue;
+        f32 SineValue    = sinf(GameState->tSine);
+        i16 SampleValue  = (i16)(SineValue * ToneVolume);
+        *Memory++        = SampleValue;
+        *Memory++        = SampleValue;
         
-        Time += (PI_2 * 1.0f / (f32)WavePeriod);
-        if(Time >= PI_2)
+        GameState->tSine            += (PI_2 * 1.0f / (f32)WavePeriod);
+        if(GameState->tSine >= PI_2)
         {
-            Time = 0;
+            GameState->tSine = 0;
         }
     }
 }
 
 internal void
-RenderWeirdGradient(game_offscreen_buffer *Bitmap, i32 BlueOffset, i32 GreenOffset)
+RenderWeirdGradient(game_offscreen_buffer *Bitmap, i32 BlueOffset,
+                    i32 GreenOffset)
 {
     u8 *Row = (u8 *)Bitmap->Memory;
     for(i32 Y = 0; Y < Bitmap->Height; ++Y)
@@ -32,7 +33,7 @@ RenderWeirdGradient(game_offscreen_buffer *Bitmap, i32 BlueOffset, i32 GreenOffs
         u32 *Pixel = (u32 *)Row;
         for(i32 X = 0; X < Bitmap->Width; ++X)
         {
-            u8 Blue = (u8)(X + BlueOffset);
+            u8 Blue  = (u8)(X + BlueOffset);
             u8 Green = (u8)(Y + GreenOffset);
             *Pixel++ = ((u32)Blue << 0) | ((u32)Green << 8) | ((u32)255 << 24);
         }
@@ -40,46 +41,66 @@ RenderWeirdGradient(game_offscreen_buffer *Bitmap, i32 BlueOffset, i32 GreenOffs
     }
 }
 
-internal void
-GameUpdateAndRender(game_memory *Memory, game_input *Input, game_offscreen_buffer *Bitmap, game_sound_output_buffer *Sound)
+extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
     
+    Assert((&Input->Controllers[0].Terminator -
+            &Input->Controllers[0].Buttons[0]) ==
+           (ArrayCount(Input->Controllers[0].Buttons)));
     Assert(sizeof(game_state) <= Memory->PermanentStorageSize);
     
     game_state *GameState = (game_state *)Memory->PermanentStorage;
     
     if(!Memory->IsInitialized)
     {
-        const char *Filename = __FILE__;
-        debug_read_file_result File = DEBUGPlatformReadEntireFile(Filename);
+        const char            *Filename = __FILE__;
+        debug_read_file_result File     = DEBUGPlatformReadEntireFile(Filename);
         if(File.Contents)
         {
-            DEBUGPlatformWriteEntireFile("test.out", File.ContentsSize, File.Contents);
-            DEBUGPlatformFreeFileMemory(File.Contents);
+            Memory->DEBUGPlatformWriteEntireFile("test.out", File.ContentsSize,
+                                                 File.Contents);
+            Memory->DEBUGPlatformFreeFileMemory(File.Contents);
         }
-        GameState->ToneHz = 256;
+        GameState->ToneHz     = 512;
+        GameState->tSine = 0.0f;
         Memory->IsInitialized = true;
     }
     
-    game_controller_input *Input0 = &Input->Controllers[0];
-    
-    if(Input0->IsAnalog)
+    for(i32 ControllerIndex = 0;
+        ControllerIndex < ArrayCount(Input->Controllers); ++ControllerIndex)
     {
-        GameState->BlueOffset += (i32)(4.0f*(Input0->EndX));
-        GameState->ToneHz = 256 + (int)(128.0f*(Input0->EndY));
+        game_controller_input *Controller = GetController(Input,
+                                                          ControllerIndex);
+        if(Controller->IsAnalog)
+        {
+            GameState->BlueOffset += (i32)(4.0f * Controller->StickAverageX);
+            GameState->ToneHz = 256 + (i32)(128.0f * Controller->StickAverageY);
+        }
+        else
+        {
+            if(Controller->MoveLeft.EndedDown)
+            {
+                GameState->BlueOffset -= 1;
+            }
+            
+            if(Controller->MoveRight.EndedDown)
+            {
+                GameState->BlueOffset += 1;
+            }
+        }
+        
+        if(Controller->ActionDown.EndedDown)
+        {
+            GameState->GreenOffset += 1;
+        }
     }
     
-    else
-    {
-        // Digital movement tuning
-    }
-    
-    if(Input0->Down.EndedDown)
-    {
-        GameState->GreenOffset += 1;
-    }
-    
-    GameOutputSound(Sound, GameState->ToneHz);
     RenderWeirdGradient(Bitmap, GameState->BlueOffset, GameState->GreenOffset);
+}
+
+extern "C" GAME_GET_SOUND_SAMPLES(GameGetSoundSamples)
+{
     
+    game_state *GameState = (game_state *)Memory->PermanentStorage;
+    GameOutputSound(GameState, Sound, GameState->ToneHz);
 }
