@@ -51,6 +51,16 @@ BytesPerSampleFrame * 2;
 
 global_variable u32 MAXFRAMES             = 0;
 
+
+DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
+{
+    if(Memory)
+    {
+        free(Memory);
+    }
+}
+
+
 DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
 {
     debug_read_file_result Result         = {};
@@ -104,14 +114,6 @@ DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
     }
     
     return Result;
-}
-
-DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
-{
-    if(Memory)
-    {
-        free(Memory);
-    }
 }
 
 DEBUG_PLATFORM_WRITE_ENTIRE_FILE(DEBUGPlatformWriteEntireFile)
@@ -301,21 +303,43 @@ struct macOS_game_code
     b32 IsValid;
 };
 
+internal timespec 
+macOS_GetLastWriteTime(char *Filename)
+{
+    struct stat FileData = {};
+    
+    timespec Result = {};
+    
+    if(stat(Filename, &FileData) == 0)
+    {
+        Result = FileData.st_mtimespec;
+    }
+    
+    return Result;
+}
+
 internal void
 macOS_LoadGameCode(macOS_game_code *GameCode, char *GameFullPath, char *CopyFullPath)
 {
     
-    copyfile(GameFullPath, CopyFullPath, NULL, 0);
+    copyfile(GameFullPath, CopyFullPath, NULL, COPYFILE_ALL);
     
     GameCode->GameCodeDLL = dlopen(CopyFullPath, RTLD_NOW);
     if(GameCode->GameCodeDLL)
     {
         
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpedantic"
+        
         GameCode->UpdateAndRender = (game_update_and_render *)dlsym(GameCode->GameCodeDLL, "GameUpdateAndRender");
         
         GameCode->GetSoundSamples = (game_get_sound_samples *)dlsym(GameCode->GameCodeDLL, "GameGetSoundSamples");
         
+#pragma clang diagnostic pop
+        
         GameCode->IsValid = (GameCode->UpdateAndRender && GameCode->GetSoundSamples);
+        
+        
     }
     
     if(!GameCode->IsValid)
@@ -346,7 +370,7 @@ macOS_UnloadGameCode(macOS_game_code *GameCode)
 
 
 internal void
-ProcessKeyboardMessage(game_button_state *ButtonState, b32 IsDown)
+macOS_ProcessKeyboardMessage(game_button_state *ButtonState, b32 IsDown)
 {
     
     Assert(ButtonState->EndedDown != IsDown);
@@ -355,7 +379,7 @@ ProcessKeyboardMessage(game_button_state *ButtonState, b32 IsDown)
 }
 
 internal void
-ProcessButton(b32 Pressed, game_button_state *ButtonState)
+macOS_ProcessButton(b32 Pressed, game_button_state *ButtonState)
 {
     
     ButtonState->HalfTransitionCount = (ButtonState->EndedDown != Pressed) ? 1
@@ -384,9 +408,8 @@ main()
     char CopyFilename[] = "handmade_temp.dylib";
     char GameFullPath[PATH_MAX];
     char CopyFullPath[PATH_MAX];
-    BuildFullPath(State, GameFilename,
-                  sizeof(GameFilename), GameFullPath);
-    BuildFullPath(State, CopyFilename, sizeof(CopyFilename), CopyFullPath);
+    BuildFullPath(&State, GameFilename, sizeof(GameFilename), GameFullPath);
+    BuildFullPath(&State, CopyFilename, sizeof(CopyFilename), CopyFullPath);
     
     
     i32 MonitorRefreshHz           = 60;
@@ -407,6 +430,9 @@ main()
         game_memory GameMemory          = {};
         GameMemory.PermanentStorageSize = Megabytes(64);
         GameMemory.TransientStorageSize = Gigabytes(1);
+        GameMemory.DEBUGPlatformFreeFileMemory = DEBUGPlatformFreeFileMemory;
+        GameMemory.DEBUGPlatformReadEntireFile = DEBUGPlatformReadEntireFile;
+        GameMemory.DEBUGPlatformWriteEntireFile = DEBUGPlatformWriteEntireFile;
         
         u64           TotalSize         = GameMemory.PermanentStorageSize +
             GameMemory.TransientStorageSize;
@@ -706,6 +732,10 @@ main()
         // game_input *NewInput = &Input[0];
         // game_input *OldInput = &Input[1];
         
+        macOS_game_code Game = {};
+        macOS_LoadGameCode(&Game, GameFullPath, CopyFullPath);
+        u32 LoadCounter = 0;
+        
         game_input             Input              = {};
         game_controller_input *KeyboardController = GetController(&Input, 0);
         KeyboardController->IsConnected           = true;
@@ -719,6 +749,14 @@ main()
         
         while(GLOBAL_RUNNING)
         {
+            
+            if(LoadCounter++ > 120)
+            {
+                
+                macOS_UnloadGameCode(&Game);
+                macOS_LoadGameCode(&Game, GameFullPath, CopyFullPath);
+                LoadCounter = 0;
+            }
             
             for(i32 ButtonIndex = 0;
                 ButtonIndex < ArrayCount(KeyboardController->Buttons);
@@ -771,106 +809,106 @@ main()
                                     case kVK_ANSI_W:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->MoveUp,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->MoveUp,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_ANSI_A:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->MoveLeft,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->MoveLeft,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_ANSI_S:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->MoveDown,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->MoveDown,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_ANSI_D:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->MoveRight,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->MoveRight,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_ANSI_Q:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->LeftShoulder,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->LeftShoulder,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_ANSI_E:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->RightShoulder,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->RightShoulder,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_UpArrow:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->ActionUp,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->ActionUp,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_LeftArrow:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->ActionLeft,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->ActionLeft,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_DownArrow:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->ActionDown,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->ActionDown,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_RightArrow:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->ActionRight,
-                                                               IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->ActionRight,
+                                                                     IsDown);
                                     }
                                     break;
                                     
                                     case kVK_Escape:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->Start, IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->Start, IsDown);
                                     }
                                     break;
                                     
                                     case kVK_Space:
                                     {
                                         
-                                        ProcessKeyboardMessage(
-                                                               &KeyboardController->Back, IsDown);
+                                        macOS_ProcessKeyboardMessage(
+                                                                     &KeyboardController->Back, IsDown);
                                     }
                                     break;
                                 }
@@ -956,23 +994,23 @@ main()
                         
                         f32 Threshold = 0.5f;
                         
-                        ProcessButton(
-                                      (GameController->StickAverageX < -Threshold) ? 1
-                                      : 0,
-                                      &GameController->MoveLeft);
+                        macOS_ProcessButton(
+                                            (GameController->StickAverageX < -Threshold) ? 1
+                                            : 0,
+                                            &GameController->MoveLeft);
                         
-                        ProcessButton(
-                                      (GameController->StickAverageX > Threshold) ? 1 : 0,
-                                      &GameController->MoveRight);
+                        macOS_ProcessButton(
+                                            (GameController->StickAverageX > Threshold) ? 1 : 0,
+                                            &GameController->MoveRight);
                         
-                        ProcessButton(
-                                      (GameController->StickAverageY < -Threshold) ? 1
-                                      : 0,
-                                      &GameController->MoveDown);
+                        macOS_ProcessButton(
+                                            (GameController->StickAverageY < -Threshold) ? 1
+                                            : 0,
+                                            &GameController->MoveDown);
                         
-                        ProcessButton(
-                                      (GameController->StickAverageY > Threshold) ? 1 : 0,
-                                      &GameController->MoveUp);
+                        macOS_ProcessButton(
+                                            (GameController->StickAverageY > Threshold) ? 1 : 0,
+                                            &GameController->MoveUp);
                         
                         /*
                         f32  RightStick_X  = [[[Gamepad rightThumbstick]
@@ -980,29 +1018,29 @@ main()
                         rightThumbstick] yAxis] value];
 */
                         
-                        ProcessButton([[Gamepad buttonA] isPressed],
-                                      &GameController->ActionDown);
+                        macOS_ProcessButton([[Gamepad buttonA] isPressed],
+                                            &GameController->ActionDown);
                         
-                        ProcessButton([[Gamepad buttonB] isPressed],
-                                      &GameController->ActionRight);
+                        macOS_ProcessButton([[Gamepad buttonB] isPressed],
+                                            &GameController->ActionRight);
                         
-                        ProcessButton([[Gamepad buttonX] isPressed],
-                                      &GameController->ActionLeft);
+                        macOS_ProcessButton([[Gamepad buttonX] isPressed],
+                                            &GameController->ActionLeft);
                         
-                        ProcessButton([[Gamepad buttonY] isPressed],
-                                      &GameController->ActionUp);
+                        macOS_ProcessButton([[Gamepad buttonY] isPressed],
+                                            &GameController->ActionUp);
                         
-                        ProcessButton([[Gamepad leftShoulder] isPressed],
-                                      &GameController->LeftShoulder);
+                        macOS_ProcessButton([[Gamepad leftShoulder] isPressed],
+                                            &GameController->LeftShoulder);
                         
-                        ProcessButton([[Gamepad rightShoulder] isPressed],
-                                      &GameController->RightShoulder);
+                        macOS_ProcessButton([[Gamepad rightShoulder] isPressed],
+                                            &GameController->RightShoulder);
                         
-                        ProcessButton([[Gamepad buttonMenu] isPressed],
-                                      &GameController->Start);
+                        macOS_ProcessButton([[Gamepad buttonMenu] isPressed],
+                                            &GameController->Start);
                         
-                        ProcessButton([[Gamepad buttonOptions] isPressed],
-                                      &GameController->Back);
+                        macOS_ProcessButton([[Gamepad buttonOptions] isPressed],
+                                            &GameController->Back);
                     }
                     else
                     {
@@ -1043,8 +1081,8 @@ main()
                 GameBitmap.Height = (i32)TextureHeight;
                 GameBitmap.Pitch  = (i32)BitmapPitch;
                 
-                GameUpdateAndRender(&GameMemory, &Input, &GameBitmap,
-                                    &GameSound);
+                Game.UpdateAndRender(&GameMemory, &Input, &GameBitmap);
+                Game.GetSoundSamples(&GameMemory, &GameSound);
                 
                 // Copy game sound into ring buffer
                 i16 *Memory = GameSound.Memory;

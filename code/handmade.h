@@ -171,14 +171,17 @@ struct game_state
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 GAME_UPDATE_AND_RENDER(GameUpdateAndRenderStub)
 {
-    
+    (void)Memory;
+    (void)Input;
+    (void)Bitmap;
 }
 
 #define GAME_GET_SOUND_SAMPLES(name) void name(game_memory *Memory, game_sound_output_buffer *Sound)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 GAME_GET_SOUND_SAMPLES(GameGetSoundSamplesStub)
 {
-    
+    (void)Memory;
+    (void)Sound;
 }
 
 #define HANDMADE_H

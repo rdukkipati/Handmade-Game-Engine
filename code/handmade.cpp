@@ -36,6 +36,7 @@ RenderWeirdGradient(game_offscreen_buffer *Bitmap, i32 BlueOffset,
             u8 Blue  = (u8)(X + BlueOffset);
             u8 Green = (u8)(Y + GreenOffset);
             *Pixel++ = ((u32)Blue << 0) | ((u32)Green << 8) | ((u32)255 << 24);
+            
         }
         Row += Bitmap->Pitch;
     }
@@ -53,8 +54,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     
     if(!Memory->IsInitialized)
     {
-        const char            *Filename = __FILE__;
-        debug_read_file_result File     = DEBUGPlatformReadEntireFile(Filename);
+        char            *Filename = __FILE__;
+        debug_read_file_result File     = Memory->DEBUGPlatformReadEntireFile(Filename);
         if(File.Contents)
         {
             Memory->DEBUGPlatformWriteEntireFile("test.out", File.ContentsSize,
