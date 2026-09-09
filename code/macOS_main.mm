@@ -29,6 +29,21 @@
 
 #include "handmade.h"
 
+
+struct macOS_state
+{
+    
+    u64 MemorySize;
+    void *GameMemoryBlock;
+    
+    i32 RecordingFileDescriptor;
+    i32 InputRecordingIndex;
+    
+    i32 PlaybackFileDescriptor;
+    i32 InputPlayingIndex;
+};
+
+
 global_variable b32 GLOBAL_RUNNING            = true;
 
 global_variable id<MTLTexture>        Texture = nil;
@@ -296,6 +311,7 @@ BuildFullPath(exe_state *State, char *Filename, size_t FilenameSize,
 struct macOS_game_code
 {
     void *GameCodeDLL;
+    timespec LastWrite;
     
     game_update_and_render *UpdateAndRender;
     game_get_sound_samples *GetSoundSamples;
@@ -397,24 +413,110 @@ GetMillisecondsElapsed(u64 EndCounter, u64 StartCounter,
     return Milliseconds;
 }
 
+internal void
+macOS_BeginRecordingInput(macOS_state *State, i32 InputRecordingIndex)
+{
+    
+    State->InputRecordingIndex = InputRecordingIndex;
+    
+    char *Filename = "foo.hmi";
+    State->RecordingFileDescriptor = open(Filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    
+    u32 BytesToWrite = (u32)State->MemorySize;
+    Assert(State->MemorySize == BytesToWrite);
+    
+    write(State->RecordingFileDescriptor, State->GameMemoryBlock, BytesToWrite);
+    
+}
+
+internal void
+macOS_EndRecordingInput(macOS_state *State)
+{
+    close(State->RecordingFileDescriptor);
+    State->InputRecordingIndex = 0;
+}
+
+internal void
+macOS_BeginInputPlayback(macOS_state *State, i32 InputPlayingIndex)
+{
+    
+    State->InputPlayingIndex = InputPlayingIndex;
+    
+    char *Filename = "foo.hmi";
+    State->PlaybackFileDescriptor = open(Filename, O_RDONLY);
+    
+    u32 BytesToRead = (u32)State->MemorySize;
+    Assert(State->MemorySize == BytesToRead);
+    
+    read(State->PlaybackFileDescriptor, State->GameMemoryBlock, BytesToRead);
+}
+
+internal void
+macOS_EndInputPlayback(macOS_state *State)
+{
+    
+    close(State->PlaybackFileDescriptor);
+    State->InputPlayingIndex = 0;
+}
+
+internal void
+macOS_RecordInput(macOS_state *State, game_input *NewInput)
+{
+    
+    write(State->RecordingFileDescriptor, NewInput, sizeof(*NewInput));
+}
+
+internal void
+macOS_PlaybackInput(macOS_state *State, game_input *NewInput)
+{
+    
+    ssize_t BytesRead = read(
+                             State->PlaybackFileDescriptor,
+                             NewInput,
+                             sizeof(*NewInput));
+    
+    if(BytesRead > 0)
+    {
+        
+        // Successfully read input
+    }
+    else if(BytesRead == 0)
+    {
+        
+        // EOF — restart playback
+        i32 PlayingIndex = State->InputPlayingIndex;
+        macOS_EndInputPlayback(State);
+        macOS_BeginInputPlayback(State, PlayingIndex);
+        read(State->PlaybackFileDescriptor, NewInput, sizeof(*NewInput));
+        
+    }
+    else
+    {
+        
+        // Error
+    }
+}
+
 i32
 main()
 {
     
-    exe_state State;
-    GetExecutablePath(&State);
+    exe_state EXEState;
+    GetExecutablePath(&EXEState);
     
     char GameFilename[] = "handmade.dylib";
     char CopyFilename[] = "handmade_temp.dylib";
     char GameFullPath[PATH_MAX];
     char CopyFullPath[PATH_MAX];
-    BuildFullPath(&State, GameFilename, sizeof(GameFilename), GameFullPath);
-    BuildFullPath(&State, CopyFilename, sizeof(CopyFilename), CopyFullPath);
+    BuildFullPath(&EXEState, GameFilename, sizeof(GameFilename), GameFullPath);
+    BuildFullPath(&EXEState, CopyFilename, sizeof(CopyFilename), CopyFullPath);
     
     
     i32 MonitorRefreshHz           = 60;
     i32 GameUpdateHz               = MonitorRefreshHz / 2;
     f64 TargetMillisecondsPerFrame = 1000.0 / (f64)GameUpdateHz;
+    
+    macOS_state State = {};
     
     @autoreleasepool
     {
@@ -434,11 +536,11 @@ main()
         GameMemory.DEBUGPlatformReadEntireFile = DEBUGPlatformReadEntireFile;
         GameMemory.DEBUGPlatformWriteEntireFile = DEBUGPlatformWriteEntireFile;
         
-        u64           TotalSize         = GameMemory.PermanentStorageSize +
+        State.MemorySize = GameMemory.PermanentStorageSize +
             GameMemory.TransientStorageSize;
         
         kern_return_t Result;
-        Result = vm_allocate(mach_task_self(), &BaseAddress, TotalSize, Flags);
+        Result = vm_allocate(mach_task_self(), &BaseAddress, State.MemorySize, Flags);
         if(Result != KERN_SUCCESS)
         {
             NSLog(@"vm_allocate for game memory failed: %s",
@@ -446,7 +548,9 @@ main()
             return 1;
         }
         
-        GameMemory.PermanentStorage = (void *)BaseAddress;
+        State.GameMemoryBlock = (void *)BaseAddress;
+        
+        GameMemory.PermanentStorage = State.GameMemoryBlock;
         GameMemory.TransientStorage = ((u8 *)GameMemory.PermanentStorage +
                                        GameMemory.PermanentStorageSize);
         
@@ -545,7 +649,7 @@ main()
         
         char MetalLibraryFilename[] = "shaders.metallib";
         char MetalLibraryFullPath[PATH_MAX];
-        BuildFullPath(&State, MetalLibraryFilename,
+        BuildFullPath(&EXEState, MetalLibraryFilename,
                       sizeof(MetalLibraryFilename), MetalLibraryFullPath);
         NSString *NSString_MetalLibraryFullPath = [NSString
                                                    stringWithUTF8String:MetalLibraryFullPath];
@@ -733,8 +837,8 @@ main()
         // game_input *OldInput = &Input[1];
         
         macOS_game_code Game = {};
+        Game.LastWrite = macOS_GetLastWriteTime(GameFullPath);
         macOS_LoadGameCode(&Game, GameFullPath, CopyFullPath);
-        u32 LoadCounter = 0;
         
         game_input             Input              = {};
         game_controller_input *KeyboardController = GetController(&Input, 0);
@@ -749,13 +853,12 @@ main()
         
         while(GLOBAL_RUNNING)
         {
-            
-            if(LoadCounter++ > 120)
+            timespec NewLastWrite = macOS_GetLastWriteTime(GameFullPath);
+            if(NewLastWrite.tv_sec != Game.LastWrite.tv_sec || NewLastWrite.tv_nsec != Game.LastWrite.tv_nsec)
             {
-                
+                Game.LastWrite = NewLastWrite;
                 macOS_UnloadGameCode(&Game);
                 macOS_LoadGameCode(&Game, GameFullPath, CopyFullPath);
-                LoadCounter = 0;
             }
             
             for(i32 ButtonIndex = 0;
@@ -911,6 +1014,32 @@ main()
                                                                      &KeyboardController->Back, IsDown);
                                     }
                                     break;
+                                    
+#if HANDMADE_INTERNAL
+                                    
+                                    case kVK_ANSI_L:
+                                    {
+                                        
+                                        if(IsDown)
+                                        {
+                                            
+                                            if(State.InputRecordingIndex == 0)
+                                            {
+                                                
+                                                macOS_BeginRecordingInput(&State, 1);
+                                            }
+                                            
+                                            else
+                                            {
+                                                
+                                                macOS_EndRecordingInput(&State);
+                                                macOS_BeginInputPlayback(&State, 1);
+                                            }
+                                        }
+                                    }
+                                    break;
+                                    
+#endif
                                 }
                             }
                             
@@ -948,23 +1077,21 @@ main()
                     {
                         
                         GameController->IsConnected = true;
+                        GameController->IsAnalog = true;
                         
                         GameController->StickAverageX =
                             [[[Gamepad leftThumbstick] xAxis] value];
                         GameController->StickAverageY =
                             [[[Gamepad leftThumbstick] yAxis] value];
                         
+                        /*
                         if((GameController->StickAverageX != 0.0f) ||
                            (GameController->StickAverageY != 0.0f))
                         {
                             
                             GameController->IsAnalog = true;
                         }
-                        else
-                        {
-                            
-                            GameController->IsAnalog = false;
-                        }
+*/
                         
                         GCControllerDirectionPad *DPad = [Gamepad dpad];
                         
@@ -972,6 +1099,7 @@ main()
                         {
                             GameController->StickAverageY = 1.0f;
                             GameController->IsAnalog      = false;
+                            
                         }
                         
                         if([[DPad down] isPressed])
@@ -1058,6 +1186,24 @@ main()
                     ++ControllerIndex;
                 }
                 
+                GameBitmap.Width  = (i32)TextureWidth;
+                GameBitmap.Height = (i32)TextureHeight;
+                GameBitmap.Pitch  = (i32)BitmapPitch;
+                
+                if(State.InputRecordingIndex)
+                {
+                    
+                    macOS_RecordInput(&State, &Input);
+                }
+                
+                if(State.InputPlayingIndex)
+                {
+                    
+                    macOS_PlaybackInput(&State, &Input);
+                }
+                
+                Game.UpdateAndRender(&GameMemory, &Input, &GameBitmap);
+                
                 // ReadWriteDiff is in SampleFrames
                 i32 ReadWriteDiff = 0;
                 i32 ReadIndex     = macOS_Sound.ReadIndex;
@@ -1074,14 +1220,11 @@ main()
                         (macOS_Sound.WriteIndex);
                 }
                 
+                
                 GameSound.SampleFramesToWrite = Latency - ReadWriteDiff;
                 Assert(GameSound.SampleFramesToWrite >= 0);
                 
-                GameBitmap.Width  = (i32)TextureWidth;
-                GameBitmap.Height = (i32)TextureHeight;
-                GameBitmap.Pitch  = (i32)BitmapPitch;
                 
-                Game.UpdateAndRender(&GameMemory, &Input, &GameBitmap);
                 Game.GetSoundSamples(&GameMemory, &GameSound);
                 
                 // Copy game sound into ring buffer

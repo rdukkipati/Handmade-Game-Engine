@@ -62,7 +62,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
                                                  File.Contents);
             Memory->DEBUGPlatformFreeFileMemory(File.Contents);
         }
-        GameState->ToneHz     = 512;
+        GameState->ToneHz     = 256;
         GameState->tSine = 0.0f;
         Memory->IsInitialized = true;
     }
@@ -72,28 +72,41 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
         game_controller_input *Controller = GetController(Input,
                                                           ControllerIndex);
-        if(Controller->IsAnalog)
+        
+        if(Controller->IsConnected)
         {
-            GameState->BlueOffset += (i32)(4.0f * Controller->StickAverageX);
-            GameState->ToneHz = 256 + (i32)(128.0f * Controller->StickAverageY);
-        }
-        else
-        {
-            if(Controller->MoveLeft.EndedDown)
+            if(Controller->IsAnalog)
             {
-                GameState->BlueOffset -= 1;
+                
+                GameState->BlueOffset += (i32)(4.0f * Controller->StickAverageX);
+                GameState->ToneHz = 256 + (i32)(128.0f * Controller->StickAverageY);
+                
+            }
+            else
+            {
+                GameState->ToneHz = 256 + (i32)(128.0f * Controller->StickAverageY);
+                if(Controller->MoveLeft.EndedDown)
+                {
+                    GameState->BlueOffset -= 1;
+                }
+                
+                if(Controller->MoveUp.EndedDown)
+                {
+                    GameState->BlueOffset -= 10;
+                }
+                
+                if(Controller->MoveRight.EndedDown)
+                {
+                    GameState->BlueOffset += 1;
+                }
             }
             
-            if(Controller->MoveRight.EndedDown)
+            if(Controller->ActionDown.EndedDown)
             {
-                GameState->BlueOffset += 1;
+                GameState->GreenOffset += 1;
             }
         }
         
-        if(Controller->ActionDown.EndedDown)
-        {
-            GameState->GreenOffset += 1;
-        }
     }
     
     RenderWeirdGradient(Bitmap, GameState->BlueOffset, GameState->GreenOffset);
