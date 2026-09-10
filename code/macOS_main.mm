@@ -30,17 +30,29 @@
 #include "handmade.h"
 
 
+struct macOS_replay_buffer
+{
+    
+    i32 FileDescriptor;
+    char *Filename;
+    void *MemoryBlock;
+};
+
 struct macOS_state
 {
     
     u64 MemorySize;
     void *GameMemoryBlock;
+    macOS_replay_buffer ReplayBuffers[4];
+    char InputReplayFilenames[4][PATH_MAX];
     
     i32 RecordingFileDescriptor;
     i32 InputRecordingIndex;
     
     i32 PlaybackFileDescriptor;
     i32 InputPlayingIndex;
+    
+    
 };
 
 
@@ -413,42 +425,56 @@ GetMillisecondsElapsed(u64 EndCounter, u64 StartCounter,
     return Milliseconds;
 }
 
+internal macOS_replay_buffer *
+macOS_GetReplayBuffer(macOS_state *State, i32 Index)
+{
+    
+    Assert(Index < ArrayCount(State->ReplayBuffers));
+    macOS_replay_buffer *Result = &State->ReplayBuffers[Index];
+    return Result;
+}
+
 internal void
 macOS_BeginRecordingInput(macOS_state *State, i32 InputRecordingIndex)
 {
     
-    State->InputRecordingIndex = InputRecordingIndex;
-    
-    char *Filename = "foo.hmi";
-    State->RecordingFileDescriptor = open(Filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    
-    u32 BytesToWrite = (u32)State->MemorySize;
-    Assert(State->MemorySize == BytesToWrite);
-    
-    write(State->RecordingFileDescriptor, State->GameMemoryBlock, BytesToWrite);
-    
+    macOS_replay_buffer *ReplayBuffer = macOS_GetReplayBuffer(State, InputRecordingIndex);
+    if(ReplayBuffer->MemoryBlock)
+    {
+        
+        State->InputRecordingIndex = InputRecordingIndex;
+        
+        char *Filename = State->InputReplayFilenames[InputRecordingIndex];
+        State->RecordingFileDescriptor = open(Filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        
+        memcpy(ReplayBuffer->MemoryBlock, State->GameMemoryBlock, State->MemorySize);
+        
+        
+    }
 }
 
 internal void
 macOS_EndRecordingInput(macOS_state *State)
 {
     close(State->RecordingFileDescriptor);
-    State->InputRecordingIndex = 0;
+    State->InputRecordingIndex = -1;
 }
 
 internal void
 macOS_BeginInputPlayback(macOS_state *State, i32 InputPlayingIndex)
 {
     
-    State->InputPlayingIndex = InputPlayingIndex;
-    
-    char *Filename = "foo.hmi";
-    State->PlaybackFileDescriptor = open(Filename, O_RDONLY);
-    
-    u32 BytesToRead = (u32)State->MemorySize;
-    Assert(State->MemorySize == BytesToRead);
-    
-    read(State->PlaybackFileDescriptor, State->GameMemoryBlock, BytesToRead);
+    macOS_replay_buffer *ReplayBuffer = macOS_GetReplayBuffer(State, InputPlayingIndex);
+    if(ReplayBuffer->MemoryBlock)
+    {
+        
+        State->InputPlayingIndex = InputPlayingIndex;
+        
+        char *Filename = State->InputReplayFilenames[InputPlayingIndex];
+        State->PlaybackFileDescriptor = open(Filename, O_RDONLY);
+        
+        memcpy(State->GameMemoryBlock, ReplayBuffer->MemoryBlock, State->MemorySize);
+    }
 }
 
 internal void
@@ -456,7 +482,7 @@ macOS_EndInputPlayback(macOS_state *State)
 {
     
     close(State->PlaybackFileDescriptor);
-    State->InputPlayingIndex = 0;
+    State->InputPlayingIndex = -1;
 }
 
 internal void
@@ -504,6 +530,10 @@ main()
     exe_state EXEState;
     GetExecutablePath(&EXEState);
     
+    macOS_state State = {};
+    State.InputRecordingIndex = -1;
+    State.InputPlayingIndex = -1;
+    
     char GameFilename[] = "handmade.dylib";
     char CopyFilename[] = "handmade_temp.dylib";
     char GameFullPath[PATH_MAX];
@@ -511,12 +541,31 @@ main()
     BuildFullPath(&EXEState, GameFilename, sizeof(GameFilename), GameFullPath);
     BuildFullPath(&EXEState, CopyFilename, sizeof(CopyFilename), CopyFullPath);
     
+    char ReplayFilename1[] = "replay1.hmi";
+    char ReplayFilename2[] = "replay2.hmi";
+    char ReplayFilename3[] = "replay3.hmi";
+    char ReplayFilename4[] = "replay4.hmi";
+    char ReplayFullPaths[4][PATH_MAX];
+    BuildFullPath(&EXEState, ReplayFilename1, sizeof(ReplayFilename1), ReplayFullPaths[0]);
+    BuildFullPath(&EXEState, ReplayFilename2, sizeof(ReplayFilename2), ReplayFullPaths[1]);
+    BuildFullPath(&EXEState, ReplayFilename3, sizeof(ReplayFilename3), ReplayFullPaths[2]);
+    BuildFullPath(&EXEState, ReplayFilename4, sizeof(ReplayFilename4), ReplayFullPaths[3]);
+    
+    
+    char InputFilename1[] = "input1.hmi";
+    char InputFilename2[] = "input2.hmi";
+    char InputFilename3[] = "input3.hmi";
+    char InputFilename4[] = "input4.hmi";
+    BuildFullPath(&EXEState, InputFilename1, sizeof(InputFilename1), State.InputReplayFilenames[0]);
+    BuildFullPath(&EXEState, InputFilename2, sizeof(InputFilename2), State.InputReplayFilenames[1]);
+    BuildFullPath(&EXEState, InputFilename3, sizeof(InputFilename3), State.InputReplayFilenames[2]);
+    BuildFullPath(&EXEState, InputFilename4, sizeof(InputFilename4), State.InputReplayFilenames[3]);
     
     i32 MonitorRefreshHz           = 60;
     i32 GameUpdateHz               = MonitorRefreshHz / 2;
     f64 TargetMillisecondsPerFrame = 1000.0 / (f64)GameUpdateHz;
     
-    macOS_state State = {};
+    
     
     @autoreleasepool
     {
@@ -554,6 +603,35 @@ main()
         GameMemory.TransientStorage = ((u8 *)GameMemory.PermanentStorage +
                                        GameMemory.PermanentStorageSize);
         
+        
+        for(i32 ReplayIndex = 0; ReplayIndex < ArrayCount(State.ReplayBuffers); ++ReplayIndex)
+        {
+            
+            macOS_replay_buffer *ReplayBuffer = &State.ReplayBuffers[ReplayIndex];
+            
+            ReplayBuffer->Filename = ReplayFullPaths[ReplayIndex];
+            
+            ReplayBuffer->FileDescriptor = open(ReplayBuffer->Filename, O_RDWR | O_CREAT | O_TRUNC, 0666);
+            
+            if(ftruncate(ReplayBuffer->FileDescriptor, (off_t)State.MemorySize) == 0)
+            {
+                
+                ReplayBuffer->MemoryBlock = mmap(0, State.MemorySize, PROT_READ | PROT_WRITE, MAP_SHARED, ReplayBuffer->FileDescriptor, 0);
+                
+                if(ReplayBuffer->MemoryBlock != MAP_FAILED)
+                {
+                    
+                }
+                else
+                {
+                    
+                }
+            }
+            
+            
+        }
+        
+        
         mach_timebase_info_data_t Timebase;
         mach_timebase_info(&Timebase);
         
@@ -564,6 +642,7 @@ main()
         GameSound.SampleFramesPerSecond    = SampleFramesPerSecond;
         
         game_offscreen_buffer GameBitmap   = {};
+        GameBitmap.BytesPerPixel = (i32)BytesPerPixel;
         
         // Allocate macOS_Sound
         Result                             = vm_allocate(
@@ -1022,19 +1101,26 @@ main()
                                         
                                         if(IsDown)
                                         {
-                                            
-                                            if(State.InputRecordingIndex == 0)
+                                            if(State.InputPlayingIndex == -1)
                                             {
+                                                if(State.InputRecordingIndex == -1)
+                                                {
+                                                    
+                                                    macOS_BeginRecordingInput(&State, 0);
+                                                }
                                                 
-                                                macOS_BeginRecordingInput(&State, 1);
+                                                else
+                                                {
+                                                    
+                                                    macOS_EndRecordingInput(&State);
+                                                    macOS_BeginInputPlayback(&State, 0);
+                                                }
                                             }
-                                            
                                             else
                                             {
-                                                
-                                                macOS_EndRecordingInput(&State);
-                                                macOS_BeginInputPlayback(&State, 1);
+                                                macOS_EndInputPlayback(&State);
                                             }
+                                            
                                         }
                                     }
                                     break;
@@ -1056,6 +1142,39 @@ main()
                     }
                     
                 } while(Event != nil);
+                
+                
+                NSPoint screenPoint = [NSEvent mouseLocation];
+                
+                NSPoint windowPoint = [Window convertPointFromScreen:screenPoint];
+                
+                NSView *contentView = Window.contentView;
+                NSPoint viewPoint = [contentView convertPoint:windowPoint fromView:nil];
+                
+                NSPoint pixelPoint = [contentView convertPointToBacking:viewPoint];
+                
+                i32 MouseX = (i32)pixelPoint.x;
+                i32 MouseY = (i32)(contentView.bounds.size.height * contentView.window.backingScaleFactor
+                                   - pixelPoint.y);
+                
+                i32 Width = (i32)(contentView.bounds.size.width * contentView.window.backingScaleFactor);
+                i32 Height = (i32)(contentView.bounds.size.height * contentView.window.backingScaleFactor);
+                
+                
+                if(MouseX < 0) MouseX = 0;
+                if(MouseX > Width - 10) MouseX = Width - 10;
+                
+                if(MouseY < 0) MouseY = 0;
+                if(MouseY > Height - 10) MouseY = Height - 10;
+                
+                Input.MouseX = MouseX;
+                Input.MouseY = MouseY;
+                Input.MouseZ = 0;
+                
+                
+                b32 MouseDown = ([NSEvent pressedMouseButtons] & (1 << 0)) != 0;
+                
+                macOS_ProcessButton(MouseDown, &Input.MouseButtons[0]);
                 
                 NSArray<GCController *> *Controllers =
                     [GCController controllers];
@@ -1186,23 +1305,25 @@ main()
                     ++ControllerIndex;
                 }
                 
+                thread_context Thread = {};
+                
                 GameBitmap.Width  = (i32)TextureWidth;
                 GameBitmap.Height = (i32)TextureHeight;
                 GameBitmap.Pitch  = (i32)BitmapPitch;
                 
-                if(State.InputRecordingIndex)
+                if(State.InputRecordingIndex >= 0)
                 {
                     
                     macOS_RecordInput(&State, &Input);
                 }
                 
-                if(State.InputPlayingIndex)
+                if(State.InputPlayingIndex >= 0)
                 {
                     
                     macOS_PlaybackInput(&State, &Input);
                 }
                 
-                Game.UpdateAndRender(&GameMemory, &Input, &GameBitmap);
+                Game.UpdateAndRender(&Thread, &GameMemory, &Input, &GameBitmap);
                 
                 // ReadWriteDiff is in SampleFrames
                 i32 ReadWriteDiff = 0;
@@ -1225,7 +1346,7 @@ main()
                 Assert(GameSound.SampleFramesToWrite >= 0);
                 
                 
-                Game.GetSoundSamples(&GameMemory, &GameSound);
+                Game.GetSoundSamples(&Thread, &GameMemory, &GameSound);
                 
                 // Copy game sound into ring buffer
                 i16 *Memory = GameSound.Memory;
@@ -1327,6 +1448,7 @@ main()
             NSLog(@"%.3f seconds\n", Milliseconds);
         }
         NSLog(@"MAXFRAMES %d\n", MAXFRAMES);
+        NSLog(@"%lu %lu", TextureWidth, TextureHeight);
         NSLog(@"Handmade Game finished running\n");
     }
 }

@@ -52,6 +52,11 @@ SafeTruncate_u64(u64 Value)
     return Result;
 }
 
+struct thread_context
+{
+    i32 Placeholder;
+};
+
 #if HANDMADE_INTERNAL
 
 struct debug_read_file_result
@@ -79,6 +84,7 @@ struct game_offscreen_buffer
     i32   Width;
     i32   Height;
     i32   Pitch;
+    i32 BytesPerPixel;
 };
 
 struct game_sound_output_buffer
@@ -131,6 +137,10 @@ struct game_controller_input
 
 struct game_input
 {
+    game_button_state MouseButtons[5];
+    i32 MouseX;
+    i32 MouseY;
+    i32 MouseZ;
     game_controller_input Controllers[5];
 };
 
@@ -165,21 +175,27 @@ struct game_state
     i32 BlueOffset;
     
     f32 tSine;
+    
+    i32 PlayerX;
+    i32 PlayerY;
+    f32 tJump;
 };
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory *Memory, game_input *Input, game_offscreen_buffer *Bitmap)
+#define GAME_UPDATE_AND_RENDER(name) void name(thread_context *Thread, game_memory *Memory, game_input *Input, game_offscreen_buffer *Bitmap)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 GAME_UPDATE_AND_RENDER(GameUpdateAndRenderStub)
 {
+    (void)Thread;
     (void)Memory;
     (void)Input;
     (void)Bitmap;
 }
 
-#define GAME_GET_SOUND_SAMPLES(name) void name(game_memory *Memory, game_sound_output_buffer *Sound)
+#define GAME_GET_SOUND_SAMPLES(name) void name(thread_context *Thread, game_memory *Memory, game_sound_output_buffer *Sound)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples);
 GAME_GET_SOUND_SAMPLES(GameGetSoundSamplesStub)
 {
+    (void)Thread;
     (void)Memory;
     (void)Sound;
 }
