@@ -61,10 +61,11 @@ global_variable b32 GLOBAL_RUNNING            = true;
 global_variable id<MTLTexture>        Texture = nil;
 global_variable MTLTextureDescriptor *TextureDescriptor;
 global_variable id<MTLDevice> Device        = nil;
-global_variable NSUInteger    BytesPerPixel = 4;
-global_variable NSUInteger    TextureWidth;
-global_variable NSUInteger    TextureHeight;
-global_variable NSUInteger    BitmapPitch;
+
+#define TEXTURE_WIDTH 960
+#define TEXTURE_HEIGHT 480
+#define BYTES_PER_PIXEL 4
+#define BITMAP_PITCH (TEXTURE_WIDTH * BYTES_PER_PIXEL)
 
 global_variable u8            OldKeyboardState[128] = {};
 
@@ -232,7 +233,7 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     CGFloat WindowMinusContentHeight = (WindowRect.size.height -
                                         ContentRect.size.height);
     
-    CGFloat NewContentHeight = (10.0 *
+    CGFloat NewContentHeight = (9.0 *
                                 (FrameSize.width - WindowMinusContentWidth)) /
         16.0;
     
@@ -241,28 +242,19 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     return FrameSize;
 }
 
-// Note: Will render into fixed size texture and then sample that texture into
-// drawable texture
-- (void)ResizeBitmapAndTexturesForWindow:(NSWindow *)Window
-{
-    NSView       *ContentView   = [Window contentView];
-    CAMetalLayer *MetalLayer    = (CAMetalLayer *)[ContentView layer];
-    NSRect        BackingBounds = [ContentView
-                                   convertRectToBacking:[ContentView bounds]];
-    [MetalLayer setDrawableSize:BackingBounds.size];
-    
-    TextureWidth  = (NSUInteger)BackingBounds.size.width;
-    TextureHeight = (NSUInteger)BackingBounds.size.height;
-    BitmapPitch   = TextureWidth * BytesPerPixel;
-    
-    // Maybe allocate texture only once and bitmap only once
-    // Then only use however much of it you need
-}
-
 - (void)windowDidResize:(NSNotification *)Notification
 {
     NSWindow *Window = [Notification object];
-    [self ResizeBitmapAndTexturesForWindow:Window];
+    NSView *ContentView = [Window contentView];
+    CAMetalLayer *MetalLayer = (CAMetalLayer *)[ContentView layer];
+    
+    NSRect Bounds = [ContentView bounds];
+    CGFloat Scale = [Window backingScaleFactor];
+    
+    CGFloat WidthInPoints = TEXTURE_WIDTH / Scale;
+    CGFloat HeightInPoints = TEXTURE_HEIGHT / Scale;
+    
+    [MetalLayer setFrame:NSMakeRect((Bounds.size.width - WidthInPoints) / 2, (Bounds.size.height - HeightInPoints) / 2, WidthInPoints, HeightInPoints)];
 }
 
 - (void)windowWillClose:(NSNotification *)Notification
@@ -564,6 +556,7 @@ main()
     i32 MonitorRefreshHz           = 60;
     i32 GameUpdateHz               = MonitorRefreshHz / 2;
     f64 TargetMillisecondsPerFrame = 1000.0 / (f64)GameUpdateHz;
+    f64 TargetSecondsPerFrame = 1.0 / (f64)GameUpdateHz;
     
     
     
@@ -642,7 +635,7 @@ main()
         GameSound.SampleFramesPerSecond    = SampleFramesPerSecond;
         
         game_offscreen_buffer GameBitmap   = {};
-        GameBitmap.BytesPerPixel = (i32)BytesPerPixel;
+        GameBitmap.BytesPerPixel = BYTES_PER_PIXEL;
         
         // Allocate macOS_Sound
         Result                             = vm_allocate(
@@ -671,7 +664,7 @@ main()
         // Allocate GameBitmap
         Result = vm_allocate(mach_task_self(),
                              (vm_address_t *)&GameBitmap.Memory,
-                             3456 * 2234 * BytesPerPixel, VM_FLAGS_ANYWHERE);
+                             TEXTURE_WIDTH * TEXTURE_HEIGHT * BYTES_PER_PIXEL, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
         {
@@ -681,8 +674,6 @@ main()
         }
         
         NSString      *ApplicationName = @"Handmade Game";
-        NSUInteger     WindowWidth     = 960;
-        NSUInteger     WindowHeight    = 600;
         
         NSApplication *application     = [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
@@ -702,9 +693,9 @@ main()
         NSRect ScreenRect   = [[NSScreen mainScreen] frame];
         
         NSRect InitialFrame = NSMakeRect(
-                                         (ScreenRect.size.width - WindowWidth) * 0.5f,
-                                         (ScreenRect.size.height - WindowHeight) * 0.5f, WindowWidth,
-                                         WindowHeight);
+                                         (ScreenRect.size.width - TEXTURE_WIDTH) * 0.5f,
+                                         (ScreenRect.size.height - TEXTURE_HEIGHT) * 0.5f, TEXTURE_WIDTH,
+                                         TEXTURE_HEIGHT);
         
         NSWindow *Window = [[NSWindow alloc]
                             initWithContentRect:InitialFrame
@@ -720,9 +711,21 @@ main()
             return 1;
         }
         
+        CGFloat Scale = [Window backingScaleFactor];
+        CGFloat WindowWidthInPoints  = TEXTURE_WIDTH / Scale;
+        CGFloat WindowHeightInPoints = TEXTURE_HEIGHT / Scale;
+        
+        NSRect NewFrame = NSMakeRect(
+                                     (ScreenRect.size.width - WindowWidthInPoints) * 0.5f,
+                                     (ScreenRect.size.height - WindowHeightInPoints) * 0.5f, WindowWidthInPoints,
+                                     WindowHeightInPoints);
+        
+        [Window setFrame:NewFrame display:YES];
+        
+        
         [Window setBackgroundColor:[NSColor windowBackgroundColor]];
         [Window setDelegate:ApplicationDelegate];
-        [Window setMinSize:NSMakeSize(480, 300)];
+        [Window setMinSize:NSMakeSize(WindowWidthInPoints, WindowHeightInPoints)];
         [Window setTitle:ApplicationName];
         [Window makeKeyAndOrderFront:nil];
         
@@ -764,11 +767,21 @@ main()
         }
         [MetalLayer setDevice:Device];
         [MetalLayer setPixelFormat:MTLPixelFormatBGRA8Unorm];
-        // NOTE: drawable size is set later using application delegate
+        [MetalLayer setDrawableSize:CGSizeMake(TEXTURE_WIDTH, TEXTURE_HEIGHT)];
         [MetalLayer setFramebufferOnly:YES];
         [MetalLayer setPresentsWithTransaction:NO];
         
         NSView *ContentView = [Window contentView];
+        
+        NSRect Bounds = [ContentView bounds];
+        
+        CGFloat WidthInPoints = TEXTURE_WIDTH / Scale;
+        CGFloat HeightInPoints = TEXTURE_HEIGHT / Scale;
+        
+        [MetalLayer setFrame:NSMakeRect((Bounds.size.width - WidthInPoints) / 2, (Bounds.size.height - HeightInPoints) / 2, WidthInPoints, HeightInPoints)];
+        
+        
+        
         [ContentView
          setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
         [ContentView setWantsLayer:YES];
@@ -784,8 +797,8 @@ main()
         
         TextureDescriptor = [MTLTextureDescriptor
                              texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                             width:3456
-                             height:2234
+                             width:TEXTURE_WIDTH
+                             height:TEXTURE_HEIGHT
                              mipmapped:NO];
         
         Texture           = [Device newTextureWithDescriptor:TextureDescriptor];
@@ -795,7 +808,6 @@ main()
             return 1;
         }
         
-        [ApplicationDelegate ResizeBitmapAndTexturesForWindow:Window];
         
         float VerticesAndUVs[] = {
             -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f,
@@ -920,6 +932,7 @@ main()
         macOS_LoadGameCode(&Game, GameFullPath, CopyFullPath);
         
         game_input             Input              = {};
+        Input.SecondsToAdvanceOverUpdate = (f32)TargetSecondsPerFrame;
         game_controller_input *KeyboardController = GetController(&Input, 0);
         KeyboardController->IsConnected           = true;
         
@@ -1307,9 +1320,9 @@ main()
                 
                 thread_context Thread = {};
                 
-                GameBitmap.Width  = (i32)TextureWidth;
-                GameBitmap.Height = (i32)TextureHeight;
-                GameBitmap.Pitch  = (i32)BitmapPitch;
+                GameBitmap.Width  = TEXTURE_WIDTH;
+                GameBitmap.Height = TEXTURE_HEIGHT;
+                GameBitmap.Pitch  = BITMAP_PITCH;
                 
                 if(State.InputRecordingIndex >= 0)
                 {
@@ -1364,11 +1377,11 @@ main()
                     }
                 }
                 
-                [Texture replaceRegion:MTLRegionMake2D(0, 0, TextureWidth,
-                                                       TextureHeight)
+                [Texture replaceRegion:MTLRegionMake2D(0, 0, TEXTURE_WIDTH,
+                                                       TEXTURE_HEIGHT)
                  mipmapLevel:0
                  withBytes:GameBitmap.Memory
-                 bytesPerRow:BitmapPitch];
+                 bytesPerRow:BITMAP_PITCH];
                 
                 id<MTLCommandBuffer> CommandBuffer =
                     [CommandQueue commandBuffer];
@@ -1447,8 +1460,8 @@ main()
             StartCounter     = EndCounter;
             NSLog(@"%.3f seconds\n", Milliseconds);
         }
-        NSLog(@"MAXFRAMES %d\n", MAXFRAMES);
-        NSLog(@"%lu %lu", TextureWidth, TextureHeight);
+        
+        
         NSLog(@"Handmade Game finished running\n");
     }
 }

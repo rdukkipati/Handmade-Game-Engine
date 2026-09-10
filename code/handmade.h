@@ -141,6 +141,9 @@ struct game_input
     i32 MouseX;
     i32 MouseY;
     i32 MouseZ;
+    
+    f32 SecondsToAdvanceOverUpdate;
+    
     game_controller_input Controllers[5];
 };
 
