@@ -62,8 +62,8 @@ global_variable id<MTLTexture>        Texture = nil;
 global_variable MTLTextureDescriptor *TextureDescriptor;
 global_variable id<MTLDevice> Device        = nil;
 
-#define TEXTURE_WIDTH 960
-#define TEXTURE_HEIGHT 480
+#define TEXTURE_WIDTH 1920
+#define TEXTURE_HEIGHT 1080
 #define BYTES_PER_PIXEL 4
 #define BITMAP_PITCH (TEXTURE_WIDTH * BYTES_PER_PIXEL)
 
