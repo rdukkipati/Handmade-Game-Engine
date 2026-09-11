@@ -62,10 +62,12 @@ global_variable id<MTLTexture>        Texture = nil;
 global_variable MTLTextureDescriptor *TextureDescriptor;
 global_variable id<MTLDevice> Device        = nil;
 
-#define TEXTURE_WIDTH 1920
-#define TEXTURE_HEIGHT 1080
+#define BITMAP_WIDTH 960
+#define BITMAP_HEIGHT 540
+#define SCREEN_TEXTURE_WIDTH (BITMAP_WIDTH * 2)
+#define SCREEN_TEXTURE_HEIGHT (BITMAP_HEIGHT * 2)
 #define BYTES_PER_PIXEL 4
-#define BITMAP_PITCH (TEXTURE_WIDTH * BYTES_PER_PIXEL)
+#define BITMAP_PITCH (BITMAP_WIDTH * BYTES_PER_PIXEL)
 
 global_variable u8            OldKeyboardState[128] = {};
 
@@ -251,8 +253,8 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     NSRect Bounds = [ContentView bounds];
     CGFloat Scale = [Window backingScaleFactor];
     
-    CGFloat WidthInPoints = TEXTURE_WIDTH / Scale;
-    CGFloat HeightInPoints = TEXTURE_HEIGHT / Scale;
+    CGFloat WidthInPoints = SCREEN_TEXTURE_WIDTH / Scale;
+    CGFloat HeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
     
     [MetalLayer setFrame:NSMakeRect((Bounds.size.width - WidthInPoints) / 2, (Bounds.size.height - HeightInPoints) / 2, WidthInPoints, HeightInPoints)];
 }
@@ -664,7 +666,7 @@ main()
         // Allocate GameBitmap
         Result = vm_allocate(mach_task_self(),
                              (vm_address_t *)&GameBitmap.Memory,
-                             TEXTURE_WIDTH * TEXTURE_HEIGHT * BYTES_PER_PIXEL, VM_FLAGS_ANYWHERE);
+                             BITMAP_WIDTH * BITMAP_HEIGHT * BYTES_PER_PIXEL, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
         {
@@ -693,9 +695,9 @@ main()
         NSRect ScreenRect   = [[NSScreen mainScreen] frame];
         
         NSRect InitialFrame = NSMakeRect(
-                                         (ScreenRect.size.width - TEXTURE_WIDTH) * 0.5f,
-                                         (ScreenRect.size.height - TEXTURE_HEIGHT) * 0.5f, TEXTURE_WIDTH,
-                                         TEXTURE_HEIGHT);
+                                         (ScreenRect.size.width - BITMAP_WIDTH) * 0.5f,
+                                         (ScreenRect.size.height - BITMAP_HEIGHT) * 0.5f, BITMAP_WIDTH,
+                                         BITMAP_HEIGHT);
         
         NSWindow *Window = [[NSWindow alloc]
                             initWithContentRect:InitialFrame
@@ -711,9 +713,10 @@ main()
             return 1;
         }
         
+        // Resize window so it's based off our texture's width and height
         CGFloat Scale = [Window backingScaleFactor];
-        CGFloat WindowWidthInPoints  = TEXTURE_WIDTH / Scale;
-        CGFloat WindowHeightInPoints = TEXTURE_HEIGHT / Scale;
+        CGFloat WindowWidthInPoints  = SCREEN_TEXTURE_WIDTH / Scale;
+        CGFloat WindowHeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
         
         NSRect NewFrame = NSMakeRect(
                                      (ScreenRect.size.width - WindowWidthInPoints) * 0.5f,
@@ -767,7 +770,7 @@ main()
         }
         [MetalLayer setDevice:Device];
         [MetalLayer setPixelFormat:MTLPixelFormatBGRA8Unorm];
-        [MetalLayer setDrawableSize:CGSizeMake(TEXTURE_WIDTH, TEXTURE_HEIGHT)];
+        [MetalLayer setDrawableSize:CGSizeMake(SCREEN_TEXTURE_WIDTH, SCREEN_TEXTURE_HEIGHT)];
         [MetalLayer setFramebufferOnly:YES];
         [MetalLayer setPresentsWithTransaction:NO];
         
@@ -775,8 +778,8 @@ main()
         
         NSRect Bounds = [ContentView bounds];
         
-        CGFloat WidthInPoints = TEXTURE_WIDTH / Scale;
-        CGFloat HeightInPoints = TEXTURE_HEIGHT / Scale;
+        CGFloat WidthInPoints = SCREEN_TEXTURE_WIDTH / Scale;
+        CGFloat HeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
         
         [MetalLayer setFrame:NSMakeRect((Bounds.size.width - WidthInPoints) / 2, (Bounds.size.height - HeightInPoints) / 2, WidthInPoints, HeightInPoints)];
         
@@ -797,8 +800,8 @@ main()
         
         TextureDescriptor = [MTLTextureDescriptor
                              texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                             width:TEXTURE_WIDTH
-                             height:TEXTURE_HEIGHT
+                             width:BITMAP_WIDTH
+                             height:BITMAP_HEIGHT
                              mipmapped:NO];
         
         Texture           = [Device newTextureWithDescriptor:TextureDescriptor];
@@ -808,10 +811,22 @@ main()
             return 1;
         }
         
+        MTLSamplerDescriptor *SamplerDescriptor = [[MTLSamplerDescriptor alloc] init];
         
-        float VerticesAndUVs[] = {
-            -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f,
-            1.0f,  -1.0f, -1.0f, 1.0f, 1.0f, 1.0f,
+        SamplerDescriptor.minFilter = MTLSamplerMinMagFilterLinear;
+        SamplerDescriptor.magFilter = MTLSamplerMinMagFilterLinear;
+        
+        id<MTLSamplerState> Sampler = [Device newSamplerStateWithDescriptor:SamplerDescriptor];
+        if(!Sampler)
+        {
+            NSLog(@"Sampler allocation failed");
+            return 1;
+        }
+        
+        float VerticesAndUVs[]    = {
+            -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 1.0f,  0.0f, 0.0f,
+            1.0f,  -1.0f, 1.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 1.0f,
+            -1.0f, 1.0f,  0.0f, 0.0f, 1.0f,  1.0f,  1.0f, 0.0f,
         };
         
         // Note: Buffers expensive to create
@@ -849,7 +864,10 @@ main()
         VertexDescriptor.attributes[0].format      = MTLVertexFormatFloat2;
         VertexDescriptor.attributes[0].bufferIndex = 0;
         VertexDescriptor.attributes[0].offset      = 0;
-        VertexDescriptor.layouts[0].stride         = 2 * sizeof(float);
+        VertexDescriptor.attributes[1].format      = MTLVertexFormatFloat2;
+        VertexDescriptor.attributes[1].bufferIndex = 0;
+        VertexDescriptor.attributes[1].offset      = 2 * sizeof(float);
+        VertexDescriptor.layouts[0].stride         = 4 * sizeof(float);
         VertexDescriptor.layouts[0].stepFunction =
             MTLVertexStepFunctionPerVertex;
         
@@ -1175,13 +1193,13 @@ main()
                 
                 
                 if(MouseX < 0) MouseX = 0;
-                if(MouseX > Width - 10) MouseX = Width - 10;
+                if(MouseX > Width) MouseX = Width;
                 
                 if(MouseY < 0) MouseY = 0;
-                if(MouseY > Height - 10) MouseY = Height - 10;
+                if(MouseY > Height) MouseY = Height;
                 
-                Input.MouseX = MouseX;
-                Input.MouseY = MouseY;
+                Input.MouseX = MouseX / 2;
+                Input.MouseY = MouseY / 2;
                 Input.MouseZ = 0;
                 
                 
@@ -1320,8 +1338,8 @@ main()
                 
                 thread_context Thread = {};
                 
-                GameBitmap.Width  = TEXTURE_WIDTH;
-                GameBitmap.Height = TEXTURE_HEIGHT;
+                GameBitmap.Width  = BITMAP_WIDTH;
+                GameBitmap.Height = BITMAP_HEIGHT;
                 GameBitmap.Pitch  = BITMAP_PITCH;
                 
                 if(State.InputRecordingIndex >= 0)
@@ -1377,8 +1395,8 @@ main()
                     }
                 }
                 
-                [Texture replaceRegion:MTLRegionMake2D(0, 0, TEXTURE_WIDTH,
-                                                       TEXTURE_HEIGHT)
+                [Texture replaceRegion:MTLRegionMake2D(0, 0, BITMAP_WIDTH,
+                                                       BITMAP_HEIGHT)
                  mipmapLevel:0
                  withBytes:GameBitmap.Memory
                  bytesPerRow:BITMAP_PITCH];
@@ -1413,6 +1431,7 @@ main()
                  offset:0
                  atIndex:0];
                 [RenderCommandEncoder setFragmentTexture:Texture atIndex:0];
+                [RenderCommandEncoder setFragmentSamplerState:Sampler atIndex:0];
                 
                 [RenderCommandEncoder drawPrimitives:MTLPrimitiveTypeTriangle
                  vertexStart:0
@@ -1421,7 +1440,7 @@ main()
                 [RenderCommandEncoder endEncoding];
                 [CommandBuffer presentDrawable:Drawable];
                 [CommandBuffer commit];
-                [CommandBuffer waitUntilCompleted];
+                //[CommandBuffer waitUntilCompleted];
             }
             
             u64 EndCounter          = mach_absolute_time();
