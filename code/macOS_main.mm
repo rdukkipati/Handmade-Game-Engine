@@ -705,8 +705,8 @@ main()
         
         // Resize window so it's based off our texture's width and height
         CGFloat Scale = [Window backingScaleFactor];
-        CGFloat ScreenTextureWidthInPoints = SCREEN_TEXTURE_WIDTH / Scale; 
-        CGFloat ScreenTextureHeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
+        ScreenTextureWidthInPoints = SCREEN_TEXTURE_WIDTH / Scale; 
+        ScreenTextureHeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
         
         NSRect NewFrame = NSMakeRect(
                                      (ScreenRect.size.width - ScreenTextureWidthInPoints) * 0.5f,
