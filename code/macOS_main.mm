@@ -69,17 +69,19 @@ global_variable id<MTLDevice> Device        = nil;
 #define BYTES_PER_PIXEL 4
 #define BITMAP_PITCH (BITMAP_WIDTH * BYTES_PER_PIXEL)
 
+#define SAMPLE_FRAMES_PER_SECOND 48000
+#define BYTES_PER_SAMPLE_FRAME ((i32)(sizeof(i16) * 2))
+
+#define SOUND_LATENCY 3200
+#define GAME_SOUND_SIZE_IN_BYTES (SOUND_LATENCY * BYTES_PER_SAMPLE_FRAME)
+#define RING_BUFFER_SIZE_IN_BYTES (SAMPLE_FRAMES_PER_SECOND * BYTES_PER_SAMPLE_FRAME * 2)
+
+
 global_variable u8            OldKeyboardState[128] = {};
 
-global_variable i32           SampleFramesPerSecond = 48000;
-global_variable i32           BytesPerSampleFrame   = sizeof(i16) * 2;
+global_variable CGFloat ScreenTextureWidthInPoints = 0;
+global_variable CGFloat ScreenTextureHeightInPoints = 0;
 
-global_variable i32           Latency               = 3200;
-global_variable i32 GameSoundSizeInBytes  = Latency * BytesPerSampleFrame;
-global_variable i32 RingBufferSizeInBytes = SampleFramesPerSecond *
-BytesPerSampleFrame * 2;
-
-global_variable u32 MAXFRAMES             = 0;
 
 
 DEBUG_PLATFORM_FREE_FILE_MEMORY(DEBUGPlatformFreeFileMemory)
@@ -185,11 +187,6 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     (void)InTimeStamp;
     (void)InBusNumber;
     
-    if(InNumberFrames > MAXFRAMES)
-    {
-        MAXFRAMES = InNumberFrames;
-    }
-    
     macOS_sound_output *macOS_Sound  = (macOS_sound_output *)InRefCon;
     i32                 WriteIndex   = macOS_Sound->WriteIndex;
     
@@ -251,12 +248,8 @@ AudioUnitCallback(void *InRefCon, AudioUnitRenderActionFlags *IOActionFlags,
     CAMetalLayer *MetalLayer = (CAMetalLayer *)[ContentView layer];
     
     NSRect Bounds = [ContentView bounds];
-    CGFloat Scale = [Window backingScaleFactor];
     
-    CGFloat WidthInPoints = SCREEN_TEXTURE_WIDTH / Scale;
-    CGFloat HeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
-    
-    [MetalLayer setFrame:NSMakeRect((Bounds.size.width - WidthInPoints) / 2, (Bounds.size.height - HeightInPoints) / 2, WidthInPoints, HeightInPoints)];
+    [MetalLayer setFrame:NSMakeRect((Bounds.size.width - ScreenTextureWidthInPoints) / 2, (Bounds.size.height - ScreenTextureHeightInPoints) / 2, ScreenTextureWidthInPoints, ScreenTextureHeightInPoints)];
 }
 
 - (void)windowWillClose:(NSNotification *)Notification
@@ -631,10 +624,10 @@ main()
         mach_timebase_info(&Timebase);
         
         macOS_sound_output macOS_Sound     = {};
-        macOS_Sound.SizeInSampleFrames     = SampleFramesPerSecond * 2;
+        macOS_Sound.SizeInSampleFrames     = SAMPLE_FRAMES_PER_SECOND * 2;
         
         game_sound_output_buffer GameSound = {};
-        GameSound.SampleFramesPerSecond    = SampleFramesPerSecond;
+        GameSound.SampleFramesPerSecond    = SAMPLE_FRAMES_PER_SECOND;
         
         game_offscreen_buffer GameBitmap   = {};
         GameBitmap.BytesPerPixel = BYTES_PER_PIXEL;
@@ -642,7 +635,7 @@ main()
         // Allocate macOS_Sound
         Result                             = vm_allocate(
                                                          mach_task_self(), (vm_address_t *)&macOS_Sound.RingBuffer,
-                                                         (vm_size_t)RingBufferSizeInBytes, VM_FLAGS_ANYWHERE);
+                                                         (vm_size_t)RING_BUFFER_SIZE_IN_BYTES, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
         {
@@ -654,7 +647,7 @@ main()
         // Allocate GameSound
         Result = vm_allocate(
                              mach_task_self(), (vm_address_t *)&GameSound.Memory,
-                             (vm_size_t)GameSoundSizeInBytes, VM_FLAGS_ANYWHERE);
+                             (vm_size_t)GAME_SOUND_SIZE_IN_BYTES, VM_FLAGS_ANYWHERE);
         
         if(Result != KERN_SUCCESS)
         {
@@ -694,10 +687,7 @@ main()
         
         NSRect ScreenRect   = [[NSScreen mainScreen] frame];
         
-        NSRect InitialFrame = NSMakeRect(
-                                         (ScreenRect.size.width - BITMAP_WIDTH) * 0.5f,
-                                         (ScreenRect.size.height - BITMAP_HEIGHT) * 0.5f, BITMAP_WIDTH,
-                                         BITMAP_HEIGHT);
+        NSRect InitialFrame = NSMakeRect(0, 0, 0, 0);
         
         NSWindow *Window = [[NSWindow alloc]
                             initWithContentRect:InitialFrame
@@ -715,20 +705,20 @@ main()
         
         // Resize window so it's based off our texture's width and height
         CGFloat Scale = [Window backingScaleFactor];
-        CGFloat WindowWidthInPoints  = SCREEN_TEXTURE_WIDTH / Scale;
-        CGFloat WindowHeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
+        CGFloat ScreenTextureWidthInPoints = SCREEN_TEXTURE_WIDTH / Scale; 
+        CGFloat ScreenTextureHeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
         
         NSRect NewFrame = NSMakeRect(
-                                     (ScreenRect.size.width - WindowWidthInPoints) * 0.5f,
-                                     (ScreenRect.size.height - WindowHeightInPoints) * 0.5f, WindowWidthInPoints,
-                                     WindowHeightInPoints);
+                                     (ScreenRect.size.width - ScreenTextureWidthInPoints) * 0.5f,
+                                     (ScreenRect.size.height - ScreenTextureHeightInPoints) * 0.5f, ScreenTextureWidthInPoints,
+                                     ScreenTextureHeightInPoints);
         
         [Window setFrame:NewFrame display:YES];
         
         
         [Window setBackgroundColor:[NSColor windowBackgroundColor]];
         [Window setDelegate:ApplicationDelegate];
-        [Window setMinSize:NSMakeSize(WindowWidthInPoints, WindowHeightInPoints)];
+        [Window setMinSize:NSMakeSize(ScreenTextureWidthInPoints, ScreenTextureHeightInPoints)];
         [Window setTitle:ApplicationName];
         [Window makeKeyAndOrderFront:nil];
         
@@ -778,10 +768,7 @@ main()
         
         NSRect Bounds = [ContentView bounds];
         
-        CGFloat WidthInPoints = SCREEN_TEXTURE_WIDTH / Scale;
-        CGFloat HeightInPoints = SCREEN_TEXTURE_HEIGHT / Scale;
-        
-        [MetalLayer setFrame:NSMakeRect((Bounds.size.width - WidthInPoints) / 2, (Bounds.size.height - HeightInPoints) / 2, WidthInPoints, HeightInPoints)];
+        [MetalLayer setFrame:NSMakeRect((Bounds.size.width - ScreenTextureWidthInPoints) / 2, (Bounds.size.height - ScreenTextureHeightInPoints) / 2, ScreenTextureWidthInPoints, ScreenTextureHeightInPoints)];
         
         
         
@@ -909,13 +896,13 @@ main()
         }
         
         AudioStreamBasicDescription StreamFormat = {};
-        StreamFormat.mSampleRate                 = SampleFramesPerSecond;
+        StreamFormat.mSampleRate                 = SAMPLE_FRAMES_PER_SECOND;
         StreamFormat.mFormatID                   = kAudioFormatLinearPCM;
         StreamFormat.mFormatFlags       = kAudioFormatFlagIsSignedInteger |
             kAudioFormatFlagIsPacked;
         StreamFormat.mBytesPerPacket    = 4;
         StreamFormat.mFramesPerPacket   = 1;
-        StreamFormat.mBytesPerFrame     = (u32)BytesPerSampleFrame;
+        StreamFormat.mBytesPerFrame     = (u32)BYTES_PER_SAMPLE_FRAME;
         StreamFormat.mChannelsPerFrame  = 2;
         StreamFormat.mBitsPerChannel    = 16;
         
@@ -1373,7 +1360,7 @@ main()
                 }
                 
                 
-                GameSound.SampleFramesToWrite = Latency - ReadWriteDiff;
+                GameSound.SampleFramesToWrite = SOUND_LATENCY - ReadWriteDiff;
                 Assert(GameSound.SampleFramesToWrite >= 0);
                 
                 
