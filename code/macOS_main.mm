@@ -937,7 +937,7 @@ main()
         macOS_LoadGameCode(&Game, GameFullPath, CopyFullPath);
         
         game_input             Input              = {};
-        Input.SecondsToAdvanceOverUpdate = (f32)TargetSecondsPerFrame;
+        
         game_controller_input *KeyboardController = GetController(&Input, 0);
         KeyboardController->IsConnected           = true;
         
@@ -957,6 +957,8 @@ main()
                 macOS_UnloadGameCode(&Game);
                 macOS_LoadGameCode(&Game, GameFullPath, CopyFullPath);
             }
+            
+            Input.dtForFrame = (f32)TargetSecondsPerFrame;
             
             for(i32 ButtonIndex = 0;
                 ButtonIndex < ArrayCount(KeyboardController->Buttons);

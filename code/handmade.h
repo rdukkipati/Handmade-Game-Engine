@@ -142,7 +142,7 @@ struct game_input
     i32 MouseY;
     i32 MouseZ;
     
-    f32 SecondsToAdvanceOverUpdate;
+    f32 dtForFrame;
     
     game_controller_input Controllers[5];
 };
@@ -173,15 +173,8 @@ struct game_memory
 struct game_state
 {
     
-    i32 ToneHz;
-    i32 GreenOffset;
-    i32 BlueOffset;
-    
-    f32 tSine;
-    
-    i32 PlayerX;
-    i32 PlayerY;
-    f32 tJump;
+    f32 PlayerX;
+    f32 PlayerY;
 };
 
 #define GAME_UPDATE_AND_RENDER(name) void name(thread_context *Thread, game_memory *Memory, game_input *Input, game_offscreen_buffer *Bitmap)
